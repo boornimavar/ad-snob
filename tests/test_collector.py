@@ -210,3 +210,46 @@ def test_collector_does_not_need_the_ai_libraries():
     code = "import sys, collector; print('torch' in sys.modules, 'clip' in sys.modules, 'cv2' in sys.modules)"
     out = subprocess.run([sys.executable, "-c", code], cwd=ROOT, capture_output=True, text=True, check=True)
     assert out.stdout.strip() == "False False False"
+
+
+# --- stop, preview page --------------------------------------------------------
+
+def test_stop_during_meta_search_sends_nothing(service):
+    with pytest.raises(collector.CollectorError, match="Stopped"):
+        collector.collect("skincare", "IN", service, on_status=lambda _m: None,
+                          search=FakeSearch([record(0)]), stop_check=lambda: True)
+    assert service.packets == []
+
+
+def test_stop_between_packets_stops_sending(service):
+    sent = []
+    records = [record(n, "blue" if n % 2 else "green") for n in range(120)]
+
+    with pytest.raises(collector.CollectorError, match="Stopped"):
+        collector.collect("skincare", "IN", service, on_status=sent.append,
+                          search=FakeSearch(records), stop_check=lambda: len(service.packets) >= 1)
+
+    assert service.packets == [50]
+    assert not any("Removing duplicates" in s for s in sent)
+
+
+def test_preview_shows_only_design_led_best_first(service):
+    records = [record(0, "red"), record(1, "blue"), record(2, "green"), record(3, "red")]
+    final = collector.collect("skin <care>", "IN", service, on_status=lambda _m: None, search=FakeSearch(records))
+
+    page = collector.preview_html(final)
+
+    # red (0.9) before blue (0.7); green (0.2) and the red copy are left out
+    assert page.index("red.jpg") < page.index("blue.jpg")
+    assert "green.jpg" not in page and page.count("red.jpg") == 2  # link + image of one card
+    assert "1 copies hidden" in page
+    assert "skin &lt;care&gt;" in page and "<care>" not in page
+
+
+def test_save_results_writes_json_and_preview(service, tmp_path):
+    final = collector.collect("skincare", "IN", service, on_status=lambda _m: None, search=FakeSearch([record(0)]))
+
+    json_path, preview_path = collector.save_results(final, tmp_path)
+
+    assert json.loads(json_path.read_text(encoding="utf-8"))["summary"]["design_led"] == 1
+    assert "red.jpg" in preview_path.read_text(encoding="utf-8")

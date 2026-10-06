@@ -18,10 +18,11 @@ data steps in the final product. Explain things plainly, one step at a time.
    whole search (same as the old pipeline) and returns the same score columns
    as the `ads` table. Packets are only a delivery size, never a cap on ads.
    Dedup against the whole shared library needs the DB (step 3).
-2. **Laptop collector** (in progress): `collector.py` (command line for now)
-   searches Meta via `meta_collection.py` (no torch/CLIP) and sends ads to the
-   API as one job. Still to do: a simple window, then a single .exe
-   (PyInstaller).
+2. **Laptop collector** (in progress): `collector_app.py` (tkinter window:
+   Collect / Stop / Open results) around `collector.py`, which searches Meta
+   via `meta_collection.py` (no torch/CLIP), sends ads to the API as one job,
+   and saves a preview page + JSON in `collector_results/`. Still to do: a
+   single .exe (PyInstaller).
 3. **Free hosting**: analysis + dashboard on Hugging Face Spaces (enough RAM for
    CLIP), shared library in a free hosted DB (Supabase/Neon) since free hosts
    lose files on restart.
@@ -50,7 +51,9 @@ data steps in the final product. Explain things plainly, one step at a time.
 - Windows. Python env currently borrowed from the old repo:
   `C:\indian-meta-ad-scraper\.venv313\Scripts\python.exe` (has torch, CLIP,
   collector 1.4.0). A dedicated venv for this repo is still to do.
-- Tests: `python -m pytest tests` (78 pass; they never contact Meta).
+- Tests: `python -m pytest tests` (91 pass; they never contact Meta).
+  Window tests share one Tk root: creating many in one process intermittently
+  fails here with "Can't find a usable init.tcl".
 - Don't run real Meta searches yourself; ask the user (it can rate-limit
   their network).
 - The `.pkl` models were saved with scikit-learn 1.6/1.8; the borrowed venv
