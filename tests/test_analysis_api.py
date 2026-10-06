@@ -65,11 +65,11 @@ def post(client, ads, **kwargs):
     return client.post("/analyze", json={"ads": ads}, **kwargs)
 
 
-def test_home_page_says_it_is_running(api, monkeypatch):
+def test_home_page_is_the_gallery(api, monkeypatch):
     monkeypatch.setenv("CREATIVE_LENS_API_KEY", "secret")  # browsing needs no key
     res = api.get("/")
     assert res.status_code == 200
-    assert b"analysis service is running" in res.data
+    assert b"<title>Creative Lens</title>" in res.data
 
 
 def test_health(api):

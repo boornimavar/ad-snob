@@ -37,8 +37,8 @@ def test_saves_unique_ads_with_scores_details_and_picture(lib, tmp_path):
     assert row["rank_score"] == 0.8 and row["scores"]["clip_design_score"] == 0.6
     assert row["details"]["body"] == "Glow serum"
     assert row["first_seen_at"] == row["last_seen_at"] and row["times_seen"] == 1
-    assert row["thumbnail_url"] == "/thumbnails/ffff000000000000.jpg"
-    assert (tmp_path / "thumbs" / "ffff000000000000.jpg").read_bytes() == b"jpeg-bytes"
+    assert row["thumbnail_url"] == "/thumbnails/a.jpg"
+    assert (tmp_path / "thumbs" / "a.jpg").read_bytes() == b"jpeg-bytes"
 
 
 def test_duplicates_within_the_search_and_failed_ads_are_not_stored(lib):
@@ -123,8 +123,8 @@ def test_picture_is_stored_once_and_added_later_if_missing(lib, tmp_path):
     lib.save_search("skincare", "IN", [result("a", "ffff000000000000")], {"a": b"now-we-have-it"}, now=T0)
     lib.save_search("skincare", "IN", [result("a", "ffff000000000000")], {"a": b"ignored"}, now=T0)
 
-    assert lib.browse("skincare", now=T0)[0]["thumbnail_url"] == "/thumbnails/ffff000000000000.jpg"
-    assert (tmp_path / "thumbs" / "ffff000000000000.jpg").read_bytes() == b"now-we-have-it"
+    assert lib.browse("skincare", now=T0)[0]["thumbnail_url"] == "/thumbnails/a.jpg"
+    assert (tmp_path / "thumbs" / "a.jpg").read_bytes() == b"now-we-have-it"
 
 
 def test_make_thumbnail_is_a_small_jpeg():
@@ -133,3 +133,91 @@ def test_make_thumbnail_is_a_small_jpeg():
     image = Image.open(io.BytesIO(data))
     assert image.format == "JPEG" and max(image.size) == library.THUMBNAIL_MAX_SIDE
     assert len(data) < 60_000
+
+
+# --- online settings: Supabase -------------------------------------------------
+
+class FakeStorage:
+    def __init__(self, status=200):
+        self.status, self.calls = status, []
+
+    def post(self, url, data=None, headers=None, timeout=None):
+        self.calls.append((url, data, headers))
+        return type("Res", (), {"status_code": self.status, "text": "denied"})()
+
+
+def test_supabase_store_uploads_and_links_publicly():
+    session = FakeStorage()
+    store = library.SupabaseImageStore("https://abc.supabase.co/", "sb_secret_xyz", session=session)
+
+    store.save("ffff.jpg", b"jpeg")
+
+    url, data, headers = session.calls[0]
+    assert url == "https://abc.supabase.co/storage/v1/object/thumbnails/ffff.jpg" and data == b"jpeg"
+    assert headers["apikey"] == "sb_secret_xyz" and "Authorization" not in headers
+    assert headers["x-upsert"] == "true" and headers["Content-Type"] == "image/jpeg"
+    assert store.url_for("ffff.jpg") == "https://abc.supabase.co/storage/v1/object/public/thumbnails/ffff.jpg"
+
+
+def test_supabase_store_sends_older_jwt_keys_as_bearer_too():
+    store = library.SupabaseImageStore("https://abc.supabase.co", "eyJhbGciOi.payload.sig", session=FakeStorage())
+    assert store.headers["Authorization"] == "Bearer eyJhbGciOi.payload.sig"
+
+
+def test_a_failed_picture_upload_keeps_the_ad(tmp_path):
+    store = library.SupabaseImageStore("https://abc.supabase.co", "sb_secret_xyz", session=FakeStorage(status=403))
+    lib = library.Library(f"sqlite:///{tmp_path / 'l.db'}", store)
+
+    counts = lib.save_search("skincare", "IN", [result("a", "ffff000000000000")], {"a": b"jpeg"}, now=T0)
+
+    assert counts == {"new": 1, "seen_again": 0}
+    assert lib.browse("skincare", now=T0)[0]["thumbnail_url"] is None
+
+
+@pytest.mark.parametrize("given, expected", [
+    ("postgresql://u:p@host:5432/postgres", "postgresql+psycopg://u:p@host:5432/postgres"),
+    ("postgres://u:p@host/db", "postgresql+psycopg://u:p@host/db"),
+    ("sqlite:///x.db", "sqlite:///x.db"),
+])
+def test_database_url_uses_psycopg(given, expected):
+    assert library.sqlalchemy_url(given) == expected
+
+
+def test_environment_picks_supabase_when_configured(monkeypatch, tmp_path):
+    monkeypatch.setenv("CREATIVE_LENS_DATABASE_URL", f"sqlite:///{tmp_path / 'env.db'}")
+    monkeypatch.setenv("SUPABASE_URL", "https://abc.supabase.co")
+    monkeypatch.setenv("SUPABASE_SECRET_KEY", "sb_secret_xyz")
+    assert isinstance(library.library_from_environment().images, library.SupabaseImageStore)
+
+    monkeypatch.delenv("SUPABASE_SECRET_KEY")
+    monkeypatch.setenv("CREATIVE_LENS_THUMBNAIL_DIR", str(tmp_path / "t"))
+    assert isinstance(library.library_from_environment().images, library.LocalImageStore)
+
+
+def test_library_keeps_ads_with_different_prices_apart(lib):
+    # Same template picture, different offers: the search's numeric rule keeps them apart.
+    lib.save_search("skincare", "IN", [result("a", "ffff000000000000", crops=["ffff0000ffff0000"],
+                                              ocr_fingerprint="flat 40% off ₹499")], {}, now=T0)
+
+    counts = lib.save_search("skincare", "IN", [result("b", "0000ffff00000000", crops=["ffff0000ffff0001"],
+                                                       ocr_fingerprint="flat 60% off ₹799")], {}, now=T0)
+
+    assert counts == {"new": 1, "seen_again": 0}
+
+
+def test_same_picture_with_a_different_price_is_a_different_ad(lib):
+    lib.save_search("skincare", "IN", [result("a", "ffff000000000000", ocr_fingerprint="flat off on 499")], {}, now=T0)
+
+    counts = lib.save_search("skincare", "IN", [result("b", "ffff000000000000", ocr_fingerprint="flat off on 799")],
+                             {}, now=T0)
+
+    assert counts == {"new": 1, "seen_again": 0}
+    assert len(lib.browse("skincare", now=T0)) == 2
+
+
+def test_category_counts_can_follow_the_design_led_switch(lib):
+    lib.save_search("skincare", "IN", [result("hi", "ffff000000000000", rank=0.9),
+                                       result("lo", "0000ffff00000000", rank=0.2)], {}, now=T0)
+
+    assert lib.categories(now=T0)[0]["active"] == 2
+    assert lib.categories(design_led_only=True, now=T0)[0]["active"] == 1

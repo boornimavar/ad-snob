@@ -13,9 +13,10 @@ import os
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
+import requests
 from PIL import Image
 from sqlalchemy import (
-    Column, DateTime, Float, Integer, MetaData, String, Table, Text, UniqueConstraint,
+    Column, DateTime, Float, Integer, MetaData, String, Table, Text,
     case, create_engine, func, select, update,
 )
 
@@ -23,7 +24,6 @@ import meta_design_scraper_session as scraper
 
 ARCHIVE_AFTER_DAYS = 14
 DESIGN_LED_MIN_SCORE = 0.5  # same cut-off as the dashboard's "design-led only"
-SAME_AD_CROP_DISTANCE = 6  # the dedup rule's "visual match" crop pHash distance
 THUMBNAIL_MAX_SIDE = 600
 THUMBNAIL_JPEG_QUALITY = 80
 
@@ -40,7 +40,7 @@ ads = Table(
     Column("category_key", String(200), nullable=False, index=True),  # casefolded, for matching
     Column("category", String(200), nullable=False),  # as first typed, for display
     Column("country", String(8), nullable=False),
-    Column("image_hash", String(64), nullable=False),
+    Column("image_hash", String(64), nullable=False, index=True),  # not unique: same design, other price
     Column("frame_variant_hash", Text, nullable=False, default="[]"),
     Column("ocr_fingerprint", Text, nullable=False, default=""),
     Column("brand", Text, nullable=False, default=""),
@@ -55,7 +55,6 @@ ads = Table(
     Column("first_seen_at", DateTime, nullable=False),
     Column("last_seen_at", DateTime, nullable=False),
     Column("times_seen", Integer, nullable=False, default=1),
-    UniqueConstraint("category_key", "country", "image_hash", name="one_row_per_ad_per_category"),
 )
 
 
@@ -90,9 +89,41 @@ class LocalImageStore:
         return f"/thumbnails/{key}"
 
 
+class SupabaseImageStore:
+    """Picture copies in a public Supabase Storage bucket (used online)."""
+
+    def __init__(self, project_url, secret_key, bucket="thumbnails", session=None):
+        self.base = project_url.rstrip("/")
+        self.bucket = bucket
+        self.headers = {"apikey": secret_key}
+        if secret_key.startswith("eyJ"):  # older service_role keys are JWTs and also go here
+            self.headers["Authorization"] = f"Bearer {secret_key}"
+        self.session = session or requests.Session()
+
+    def save(self, key, data):
+        res = self.session.post(
+            f"{self.base}/storage/v1/object/{self.bucket}/{key}", data=data, timeout=30,
+            headers={**self.headers, "Content-Type": "image/jpeg", "x-upsert": "true",
+                     "Cache-Control": "max-age=604800"},
+        )
+        if res.status_code >= 400:
+            raise RuntimeError(f"Supabase Storage refused {key} ({res.status_code}): {res.text[:200]}")
+
+    def url_for(self, key):
+        return f"{self.base}/storage/v1/object/public/{self.bucket}/{key}"
+
+
+def sqlalchemy_url(database_url):
+    """Supabase gives postgresql://...; SQLAlchemy needs to be told to use psycopg 3."""
+    for prefix in ("postgresql://", "postgres://"):
+        if database_url.startswith(prefix):
+            return "postgresql+psycopg://" + database_url[len(prefix):]
+    return database_url
+
+
 class Library:
     def __init__(self, database_url, image_store):
-        self.engine = create_engine(database_url, pool_pre_ping=True)
+        self.engine = create_engine(sqlalchemy_url(database_url), pool_pre_ping=True)
         self.images = image_store
         metadata.create_all(self.engine)
 
@@ -102,7 +133,7 @@ class Library:
         `results` are /finish results; only analyzed representatives are kept
         (duplicates within the search are copies of them). `thumbnails` maps
         ad id -> JPEG bytes. An ad already in the library for this category
-        (same picture, or a re-crop of it) is marked seen again, not re-added.
+        (same picture, or a re-crop of it, by the search's duplicate rules) is marked seen again, not re-added.
         """
         now = now or utc_now()
         key, country = category_key(category), (country or "").upper()
@@ -110,7 +141,8 @@ class Library:
         counts = {"new": 0, "seen_again": 0}
         with self.engine.begin() as conn:
             existing = conn.execute(
-                select(ads.c.id, ads.c.image_hash, ads.c.frame_variant_hash, ads.c.thumbnail_key)
+                select(ads.c.id, ads.c.image_hash, ads.c.frame_variant_hash, ads.c.ocr_fingerprint,
+                       ads.c.thumbnail_key)
                 .where(ads.c.category_key == key, ads.c.country == country)
             ).mappings().all()
             existing = [dict(row) for row in existing]
@@ -128,18 +160,18 @@ class Library:
                 row = self._new_row(result, category, key, country, thumbnail_key, now)
                 new_id = conn.execute(ads.insert().values(**row)).inserted_primary_key[0]
                 existing.append({"id": new_id, "image_hash": row["image_hash"],
-                                 "frame_variant_hash": row["frame_variant_hash"], "thumbnail_key": thumbnail_key})
+                                 "frame_variant_hash": row["frame_variant_hash"],
+                                 "ocr_fingerprint": row["ocr_fingerprint"], "thumbnail_key": thumbnail_key})
                 counts["new"] += 1
         return counts
 
     @staticmethod
     def _find_same_ad(result, existing):
-        for row in existing:
-            if row["image_hash"] == result.get("image_hash"):
-                return row
-        for row in existing:
-            distance = scraper.crop_hash_distance(row["frame_variant_hash"], result.get("frame_variant_hash", "[]"))
-            if distance <= SAME_AD_CROP_DISTANCE:
+        """The stored ad this result is a copy of, by the search's own duplicate
+        rules (without SIFT, whose descriptors aren't stored). Exact picture first."""
+        same_picture_first = sorted(existing, key=lambda row: row["image_hash"] != result.get("image_hash"))
+        for row in same_picture_first:
+            if scraper.same_underlying_creative(result, row)[0]:
                 return row
         return None
 
@@ -149,8 +181,12 @@ class Library:
         data = thumbnails.get(str(result["id"]))
         if not data:
             return None
-        key = f"{result['image_hash']}.jpg"
-        self.images.save(key, data)
+        key = f"{scraper.safe_name(result['id'])}.jpg"  # per ad: one design can carry different prices
+        try:
+            self.images.save(key, data)
+        except Exception as exc:  # keep the ad; its picture is retried next time it's seen
+            print(f"[LIBRARY] Could not store picture {key}: {exc}")
+            return None
         return key
 
     @staticmethod
@@ -195,20 +231,33 @@ class Library:
             row[field] = row[field].strftime("%Y-%m-%d %H:%M")
         return row
 
-    def categories(self, now=None):
-        """[{category, country, active, archived}] for every category in the library."""
+    def categories(self, design_led_only=False, now=None):
+        """[{category, country, active, archived}] for every category in the library.
+
+        With design_led_only, only ads scoring DESIGN_LED_MIN_SCORE+ are counted
+        (categories with none are still listed, with zeros)."""
         cutoff = (now or utc_now()) - timedelta(days=ARCHIVE_AFTER_DAYS)
-        active = func.sum(case((ads.c.last_seen_at >= cutoff, 1), else_=0))
-        query = (select(ads.c.category_key, func.min(ads.c.category), ads.c.country, active, func.count())
+        counted = ads.c.rank_score >= DESIGN_LED_MIN_SCORE if design_led_only else True
+        active = func.sum(case(((ads.c.last_seen_at >= cutoff) & counted, 1), else_=0))
+        total = func.sum(case((counted, 1), else_=0))
+        query = (select(ads.c.category_key, func.min(ads.c.category), ads.c.country, active, total)
                  .group_by(ads.c.category_key, ads.c.country).order_by(ads.c.category_key, ads.c.country))
         with self.engine.connect() as conn:
             return [{"category": name, "country": country, "active": int(n_active or 0),
-                     "archived": int(total - (n_active or 0))}
-                    for _key, name, country, n_active, total in conn.execute(query)]
+                     "archived": int((n_total or 0) - (n_active or 0))}
+                    for _key, name, country, n_active, n_total in conn.execute(query)]
 
 
 def library_from_environment():
-    """The library configured by environment variables, with laptop defaults."""
+    """The library configured by environment variables, with laptop defaults.
+
+    Online: CREATIVE_LENS_DATABASE_URL (Supabase's Session pooler connection
+    string), SUPABASE_URL and SUPABASE_SECRET_KEY (pictures go to the public
+    "thumbnails" bucket). On a laptop: library.db and thumbnails/ in the data dir.
+    """
     database_url = os.environ.get("CREATIVE_LENS_DATABASE_URL") or f"sqlite:///{scraper.BASE_DIR / 'library.db'}"
-    thumbnail_dir = os.environ.get("CREATIVE_LENS_THUMBNAIL_DIR") or scraper.BASE_DIR / "thumbnails"
-    return Library(database_url, LocalImageStore(thumbnail_dir))
+    if os.environ.get("SUPABASE_URL") and os.environ.get("SUPABASE_SECRET_KEY"):
+        store = SupabaseImageStore(os.environ["SUPABASE_URL"], os.environ["SUPABASE_SECRET_KEY"])
+    else:
+        store = LocalImageStore(os.environ.get("CREATIVE_LENS_THUMBNAIL_DIR") or scraper.BASE_DIR / "thumbnails")
+    return Library(database_url, store)

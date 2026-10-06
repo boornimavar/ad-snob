@@ -1254,6 +1254,85 @@ def insert_ad(conn, data):
     ))
 
 
+def numeric_tokens(tokens):
+    result = set()
+    for t in tokens:
+        core = t.strip("₹$€£%+")
+        if core.isdigit() and 2 <= len(core) <= 4:
+            result.add(core)
+    return result
+
+def numbers_compatible(set_a, set_b):
+    for a in set_a:
+        for b in set_b:
+            if a == b or a in b or b in a:
+                return True
+            if len(a) >= 3 and len(b) >= 3 and a[-3:] == b[-3:]:
+                return True
+    return False
+
+def same_underlying_creative(a, b):
+    """(same?, reason) for two analyzed rows, using the duplicate rules above."""
+    text_a = str(a.get("ocr_fingerprint") or "").split()
+    text_b = str(b.get("ocr_fingerprint") or "").split()
+    num_a = numeric_tokens(text_a)
+    num_b = numeric_tokens(text_b)
+    if num_a and num_b and not numbers_compatible(num_a, num_b):
+        return False, f"numeric mismatch ({sorted(num_a)} vs {sorted(num_b)})"
+
+    if a.get("image_hash") and a.get("image_hash") == b.get("image_hash"):
+        return True, "exact pHash"
+
+    text_similarity = ocr_token_jaccard(text_a, text_b)
+    visual_distance = crop_hash_distance(
+        a.get("frame_variant_hash", "[]"),
+        b.get("frame_variant_hash", "[]")
+    )
+
+    if len(text_a) >= 3 and len(text_b) >= 3 and text_similarity >= CREATIVE_OCR_JACCARD:
+        matched, match_count = sift_same_creative(
+            a.get("_sift_descriptors"), b.get("_sift_descriptors")
+        )
+        if matched:
+            return True, f"OCR {text_similarity:.2f} + SIFT inliers={match_count}"
+        if visual_distance <= 8 and text_similarity >= CREATIVE_OCR_STRONG_JACCARD:
+            return True, f"crop pHash {visual_distance} + OCR {text_similarity:.2f}"
+        return False, f"OCR {text_similarity:.2f} + SIFT inliers={match_count} + crop pHash {visual_distance} (not enough)"
+
+    if visual_distance <= 6:
+        return True, f"crop pHash {visual_distance} (visual match, low/no OCR overlap)"
+
+    matched, match_count = sift_same_creative(
+        a.get("_sift_descriptors"), b.get("_sift_descriptors")
+    )
+    if matched:
+        return True, f"SIFT inliers={match_count} (visual match, low/no OCR overlap)"
+    return False, f"crop pHash {visual_distance} + SIFT inliers={match_count} (not enough, low/no OCR overlap)"
+
+def is_better_frame(candidate, current):
+    # The real fix: which crop looks like the better DESIGN, according
+    # to the actual trained model - not just which one is closest to a
+    # square. A small margin (0.03) avoids meaningless swaps between
+    # two genuinely near-identical scores; only a real difference in
+    # quality changes the winner.
+    cs = float(candidate.get("rank_score") or 0)
+    rs = float(current.get("rank_score") or 0)
+    if abs(cs - rs) > 0.03:
+        return cs > rs
+
+    cr = float(candidate.get("aspect_ratio") or 0)
+    rr = float(current.get("aspect_ratio") or 0)
+    cd = abs(cr - 1.0) if cr else 999
+    rd = abs(rr - 1.0) if rr else 999
+    if cd != rd:
+        return cd < rd
+    cp = int(candidate.get("image_width") or 0) * int(candidate.get("image_height") or 0)
+    rp = int(current.get("image_width") or 0) * int(current.get("image_height") or 0)
+    if cp != rp:
+        return cp > rp
+    return float(candidate.get("creative_score") or 0) > float(current.get("creative_score") or 0)
+
+
 def deduplicate_analyzed_rows(analyzed_rows):
     """Group duplicate creatives across brands/ad IDs using the existing POC rules."""
     representatives = []
@@ -1273,83 +1352,6 @@ def deduplicate_analyzed_rows(analyzed_rows):
 
     def row_tokens(row):
         return set(str(row.get("ocr_fingerprint") or "").split())
-
-    def numeric_tokens(tokens):
-        result = set()
-        for t in tokens:
-            core = t.strip("₹$€£%+")
-            if core.isdigit() and 2 <= len(core) <= 4:
-                result.add(core)
-        return result
-
-    def numbers_compatible(set_a, set_b):
-        for a in set_a:
-            for b in set_b:
-                if a == b or a in b or b in a:
-                    return True
-                if len(a) >= 3 and len(b) >= 3 and a[-3:] == b[-3:]:
-                    return True
-        return False
-
-    def same_underlying_creative(a, b):
-        text_a = str(a.get("ocr_fingerprint") or "").split()
-        text_b = str(b.get("ocr_fingerprint") or "").split()
-        num_a = numeric_tokens(text_a)
-        num_b = numeric_tokens(text_b)
-        if num_a and num_b and not numbers_compatible(num_a, num_b):
-            return False, f"numeric mismatch ({sorted(num_a)} vs {sorted(num_b)})"
-
-        if a.get("image_hash") and a.get("image_hash") == b.get("image_hash"):
-            return True, "exact pHash"
-
-        text_similarity = ocr_token_jaccard(text_a, text_b)
-        visual_distance = crop_hash_distance(
-            a.get("frame_variant_hash", "[]"),
-            b.get("frame_variant_hash", "[]")
-        )
-
-        if len(text_a) >= 3 and len(text_b) >= 3 and text_similarity >= CREATIVE_OCR_JACCARD:
-            matched, match_count = sift_same_creative(
-                a.get("_sift_descriptors"), b.get("_sift_descriptors")
-            )
-            if matched:
-                return True, f"OCR {text_similarity:.2f} + SIFT inliers={match_count}"
-            if visual_distance <= 8 and text_similarity >= CREATIVE_OCR_STRONG_JACCARD:
-                return True, f"crop pHash {visual_distance} + OCR {text_similarity:.2f}"
-            return False, f"OCR {text_similarity:.2f} + SIFT inliers={match_count} + crop pHash {visual_distance} (not enough)"
-
-        if visual_distance <= 6:
-            return True, f"crop pHash {visual_distance} (visual match, low/no OCR overlap)"
-
-        matched, match_count = sift_same_creative(
-            a.get("_sift_descriptors"), b.get("_sift_descriptors")
-        )
-        if matched:
-            return True, f"SIFT inliers={match_count} (visual match, low/no OCR overlap)"
-        return False, f"crop pHash {visual_distance} + SIFT inliers={match_count} (not enough, low/no OCR overlap)"
-
-    def is_better_frame(candidate, current):
-        # The real fix: which crop looks like the better DESIGN, according
-        # to the actual trained model - not just which one is closest to a
-        # square. A small margin (0.03) avoids meaningless swaps between
-        # two genuinely near-identical scores; only a real difference in
-        # quality changes the winner.
-        cs = float(candidate.get("rank_score") or 0)
-        rs = float(current.get("rank_score") or 0)
-        if abs(cs - rs) > 0.03:
-            return cs > rs
-
-        cr = float(candidate.get("aspect_ratio") or 0)
-        rr = float(current.get("aspect_ratio") or 0)
-        cd = abs(cr - 1.0) if cr else 999
-        rd = abs(rr - 1.0) if rr else 999
-        if cd != rd:
-            return cd < rd
-        cp = int(candidate.get("image_width") or 0) * int(candidate.get("image_height") or 0)
-        rp = int(current.get("image_width") or 0) * int(current.get("image_height") or 0)
-        if cp != rp:
-            return cp > rp
-        return float(candidate.get("creative_score") or 0) > float(current.get("creative_score") or 0)
 
     def crop_prefixes(row):
         try:
@@ -1383,10 +1385,15 @@ def deduplicate_analyzed_rows(analyzed_rows):
         else:
             candidate_idxs.update(text_poor_indices)
 
+        # The group already holding this exact picture is checked first, so a
+        # copy can't attach to a look-alike group (same template) instead.
+        exact_idx = hash_index.get(row.get("image_hash")) if row.get("image_hash") else None
+        ordered = ([exact_idx] if exact_idx is not None else []) + sorted(candidate_idxs - {exact_idx})
+
         matched_index = None
         matched_reason = ""
         tried = []
-        for idx in candidate_idxs:
+        for idx in ordered:
             same, reason = same_underlying_creative(row, representatives[idx])
             tried.append((idx, reason))
             if same:
@@ -1419,6 +1426,33 @@ def deduplicate_analyzed_rows(analyzed_rows):
         else:
             groups[group_id]["variants"].append((row, matched_reason))
 
+    # A row joins the first group it matches, and can then become that group's
+    # lead by scoring higher - so the same picture can still end up leading two
+    # groups. Merge groups whose leads are the same picture and pass the same
+    # rules (so the same design with different prices stays apart).
+    leads_by_hash = {}
+    for group_id in list(groups):
+        lead = representatives[groups[group_id]["rep_idx"]]
+        image_hash = lead.get("image_hash")
+        if not image_hash:
+            continue
+        same_picture = leads_by_hash.setdefault(image_hash, [])
+        keep_id = next((g for g in same_picture
+                        if same_underlying_creative(lead, representatives[groups[g]["rep_idx"]])[0]), None)
+        if keep_id is None:
+            same_picture.append(group_id)
+            continue
+        if is_better_frame(lead, representatives[groups[keep_id]["rep_idx"]]):
+            same_picture[same_picture.index(keep_id)] = group_id
+            keep_id, group_id = group_id, keep_id
+        merged = groups.pop(group_id)
+        moved = [(representatives[merged["rep_idx"]], "exact pHash")] + merged["variants"]
+        for member, _reason in moved:
+            member["creative_group_id"] = keep_id
+            member["duplicate"] = 1
+        groups[keep_id]["variants"].extend(moved)
+        duplicate_count += 1
+
     for group_id, group in groups.items():
         rep = representatives[group["rep_idx"]]
         variants = group["variants"]
@@ -1435,6 +1469,7 @@ def deduplicate_analyzed_rows(analyzed_rows):
             variant["creative_variant_count"] = 0
             variant["representative_reason"] = reason
 
+    representatives = [representatives[group["rep_idx"]] for group in groups.values()]
     return representatives, duplicate_count, groups
 
 

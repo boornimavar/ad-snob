@@ -32,6 +32,7 @@ import hmac
 import io
 import os
 import secrets
+from pathlib import Path
 import threading
 import time
 
@@ -247,14 +248,8 @@ UNKNOWN_JOB = "Unknown job: it finished already, expired, or the server restarte
 
 @app.route("/")
 def index():
-    return (
-        "<!doctype html><title>Creative Lens analysis service</title>"
-        "<body style='font-family:sans-serif;max-width:40em;margin:3em auto;line-height:1.5'>"
-        "<h1>Creative Lens analysis service is running</h1>"
-        "<p>This service scores ads and removes duplicates. It has no page to browse: "
-        "the collector sends ads to it. Leave this running and, in a second window, run:</p>"
-        "<pre>python collector.py beauty</pre></body>"
-    )
+    """The team's gallery of the shared library."""
+    return send_from_directory(Path(__file__).resolve().parent, "gallery.html")
 
 
 @app.route("/health")
@@ -347,7 +342,8 @@ def browse_library():
 
 @app.route("/library/categories")
 def library_categories():
-    return jsonify({"categories": get_library().categories()})
+    design_led_only = request.args.get("design_led_only", "false").lower() == "true"
+    return jsonify({"categories": get_library().categories(design_led_only=design_led_only)})
 
 
 @app.route("/thumbnails/<key>")

@@ -107,3 +107,58 @@ def test_different_prices_are_never_merged():
 
     assert len(reps) == 2
     assert duplicates == 0
+
+
+# --- regression: the same picture leading two groups (beauty search, 2026-10-06) ---
+
+def test_exact_copy_joins_its_own_group_not_a_look_alike():
+    # B is a different ad that merely looks similar to Z (same template crop).
+    # Z is an exact copy of A. Z must land in A's group, never in B's.
+    b = analyzed("b.jpg", "0000ffff0000ffff", crops=["ffff0000ffff0000"], rank_score=0.5)
+    a = analyzed("a.jpg", "aaaaaaaaaaaaaaaa", crops=["0f0f0f0f0f0f0f0f"], rank_score=0.5)
+    z = analyzed("z.jpg", "aaaaaaaaaaaaaaaa", crops=["ffff0000ffff0001"], rank_score=0.9)
+
+    reps, duplicate_count, _groups = scraper.deduplicate_analyzed_rows([b, a, z])
+
+    assert z["creative_group_id"] == a["creative_group_id"] != b["creative_group_id"]
+    assert len({r["image_hash"] for r in reps}) == len(reps) == 2
+    assert duplicate_count == 1
+
+
+def test_groups_led_by_the_same_picture_are_merged(monkeypatch):
+    # Force the old failure: Z (a copy of A) matches B's group instead of A's
+    # and takes over as its lead. The final pass must merge the two groups.
+    def fake_same(x, y):
+        pair = {x["image_file"], y["image_file"]}
+        z_already_grouped = "z.jpg" in pair and any(
+            r["image_file"] == "z.jpg" and r.get("creative_group_id") for r in (x, y))
+        # Z vs A "fails" while Z is being placed, but they really are the same ad.
+        return pair == {"z.jpg", "b.jpg"} or (pair == {"z.jpg", "a.jpg"} and z_already_grouped), "forced"
+
+    monkeypatch.setattr(scraper, "same_underlying_creative", fake_same)
+    a = analyzed("a.jpg", "aaaaaaaaaaaaaaaa", rank_score=0.5)
+    b = analyzed("b.jpg", "0000ffff0000ffff", rank_score=0.5)
+    z = analyzed("z.jpg", "aaaaaaaaaaaaaaaa", rank_score=0.9)
+
+    reps, duplicate_count, groups = scraper.deduplicate_analyzed_rows([a, b, z])
+
+    assert [r["image_file"] for r in reps] == ["z.jpg"]
+    assert len(groups) == 1 and duplicate_count == 2
+    assert a["duplicate"] == b["duplicate"] == 1 and z.get("duplicate", 0) == 0
+    assert a["creative_variant_of"] == b["creative_variant_of"] == "z.jpg"
+    assert z["creative_variant_count"] == 2
+    assert a["creative_group_id"] == b["creative_group_id"] == z["creative_group_id"]
+
+
+def test_final_merge_still_keeps_different_prices_apart(monkeypatch):
+    # Even when two groups end up led by the same picture, different prices stay apart.
+    monkeypatch.setattr(scraper, "same_underlying_creative",
+                        lambda x, y: (False, "forced") if {x["image_file"], y["image_file"]} != {"z.jpg", "b.jpg"}
+                        else (True, "forced"))
+    a = analyzed("a.jpg", "aaaaaaaaaaaaaaaa", rank_score=0.5)
+    b = analyzed("b.jpg", "0000ffff0000ffff", rank_score=0.5)
+    z = analyzed("z.jpg", "aaaaaaaaaaaaaaaa", rank_score=0.9)
+
+    reps, _dups, _groups = scraper.deduplicate_analyzed_rows([a, b, z])
+
+    assert sorted(r["image_file"] for r in reps) == ["a.jpg", "z.jpg"]
