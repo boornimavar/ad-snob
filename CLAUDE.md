@@ -33,9 +33,12 @@ data steps in the final product. Explain things plainly, one step at a time.
    (2026-10-06): only unique ads are stored, one row per ad per
    category+country; an ad unseen for 14 days moves to an Archive (never
    deleted); each unique ad keeps a ~600px JPEG copy because Meta image
-   links expire within days. Still to do: Supabase image store, online
-   dashboard reading the library, deploy. The `.exe` waits until the
-   service is online.
+   links expire within days. Built: Supabase image store, gallery at `/`
+   (`gallery.html`), `Dockerfile` for a HF Docker Space (port 7860, one
+   gunicorn worker since jobs live in memory), `deploy_space.py` (HF API
+   upload; plain git push is rejected for binaries). The collector's key is
+   in the private `.env` (never print it). Still to do: first deploy and
+   check, then the `.exe`.
 4. **Improvements**: 👍/👎 labels in the gallery feeding `--retrain`.
 
 ## Hard-won facts

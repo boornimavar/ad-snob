@@ -94,6 +94,22 @@ library exists. Use `--api` (or
 collector needs only `requirements-collector.txt` plus `meta_ads_collector`
 1.4.0, not the AI libraries.
 
+## Going online (Hugging Face + Supabase)
+
+The service and gallery run as a Hugging Face Docker Space (`Dockerfile`,
+`space_README.md`); the library lives in Supabase (Postgres + a public
+`thumbnails` storage bucket). The Space needs four secrets:
+`CREATIVE_LENS_DATABASE_URL` (Supabase "Session pooler" connection string),
+`SUPABASE_URL`, `SUPABASE_SECRET_KEY`, and `CREATIVE_LENS_API_KEY` (the
+collector's password; a generated one is in the private `.env` file).
+
+To upload a new version:
+
+```bash
+.venv\Scripts\hf auth login
+.venv\Scripts\python.exe deploy_space.py YOUR-USERNAME/creative-lens
+```
+
 ## Notes
 
 - Use `meta_ads_collector` **1.4.0** from `meta_ads_collector_source.zip`.
