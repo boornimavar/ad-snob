@@ -43,6 +43,29 @@ as a single local app:
 python dashboard_server_temporary.py
 ```
 
+## Analysis API (Step 1)
+
+```bash
+python analysis_api.py
+```
+
+Starts on http://127.0.0.1:8000. One search is one job; its ads are sent
+in packets of up to 50 (a delivery size, not a limit on the search):
+
+```
+POST /jobs                  -> {"job_id": "..."}
+POST /jobs/<job_id>/ads     {"ads": [{"id": "123", "image_url": "https://...", "brand": "..."},
+                                     {"id": "456", "image_base64": "<image bytes, base64>"}]}
+POST /jobs/<job_id>/finish  -> final results for the whole search
+```
+
+Duplicates are found across the whole search at `finish`. Each result has
+`rank_score` (higher = more design-led), the individual scores, duplicate
+info (`creative_group_id`, `duplicate`, `creative_variant_of`), and any
+extra fields you sent under `details`. `POST /analyze` does one packet in
+one step. Set `CREATIVE_LENS_API_KEY` to require an `X-API-Key` header.
+`GET /health` checks the server is up.
+
 ## Notes
 
 - Use `meta_ads_collector` **1.4.0** from `meta_ads_collector_source.zip`.

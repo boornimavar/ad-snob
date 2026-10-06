@@ -883,15 +883,8 @@ def predict_ml_batch(images):
         return [predict_ml(image) for image in images]
 
 
-def analyze_remote_creatives_batch(urls):
-    """Analyze a batch while preserving the exact existing scoring logic.
-
-    Network fetches and OCR are parallelized. CLIP/legacy ML image inference is
-    batched. OCR still runs the same six variants with the same thresholds.
-    """
-    if not urls:
-        return []
-
+def fetch_images_in_memory(urls):
+    """Fetch several creatives in parallel; failed fetches come back as None."""
     images = [None] * len(urls)
     # Fetch independently so one slow URL does not block every other image.
     with ThreadPoolExecutor(max_workers=ANALYSIS_FETCH_WORKERS) as pool:
@@ -902,9 +895,37 @@ def analyze_remote_creatives_batch(urls):
                 images[i] = future.result()
             except Exception as exc:
                 print(f"[IMAGE FETCH] Failed: {exc}")
+    return images
 
+
+def analyze_remote_creatives_batch(urls):
+    """Analyze a batch while preserving the exact existing scoring logic.
+
+    Network fetches and OCR are parallelized. CLIP/legacy ML image inference is
+    batched. OCR still runs the same six variants with the same thresholds.
+    """
+    if not urls:
+        return []
+
+    images = fetch_images_in_memory(urls)
+    results = analyze_images_batch(images)
+    for image in images:
+        if image is not None:
+            try:
+                image.close()
+            except Exception:
+                pass
+    return results
+
+
+def analyze_images_batch(images):
+    """Score already-loaded RGB images; None entries come back as None.
+
+    Returns (scores, image_hash, frame_variant_hash_json, sift_signature) per
+    image. The caller owns the images and closes them.
+    """
     valid = [(i, image) for i, image in enumerate(images) if image is not None]
-    results = [None] * len(urls)
+    results = [None] * len(images)
     if not valid:
         return results
 
@@ -970,14 +991,24 @@ def analyze_remote_creatives_batch(urls):
         results[original_index] = (
             result, str(imagehash.phash(image)), json.dumps(frame_variant_hash(image)), sift_signature,
         )
-
-    for image in images:
-        if image is not None:
-            try:
-                image.close()
-            except Exception:
-                pass
     return results
+
+
+def apply_candidate_ranking(scores, is_probable_video_frame=False):
+    """Mark an analyzed creative EXCLUDED or CANDIDATE and set its rank_score."""
+    # Hard exclusion: a FACT (Meta says this is a video ad and gave
+    # us no real static image), not a stylistic judgment. Everything
+    # else, however "photo-like" it scores, becomes a ranked
+    # candidate instead of a silent rejection.
+    if is_probable_video_frame:
+        scores["filter_status"] = "EXCLUDED"
+        scores["filter_reason"] = "video ad with no real static image (thumbnail fallback)"
+        scores["rank_score"] = ""
+    else:
+        scores["filter_status"] = "CANDIDATE"
+        scores["filter_reason"] = "(legacy heuristic note, NOT what set the rank score) " + classify_broad_static(scores)[1]
+        scores["rank_score"] = rank_score(scores)
+    return scores
 
 
 # ============================================================
@@ -1759,19 +1790,10 @@ def run_broad_search_pipeline(args, progress_callback=None, stop_check=None, db_
             scores, image_hash, frame_hash, sift_signature = analysis
             analyzed_count += 1
 
-            # Hard exclusion: a FACT (Meta says this is a video ad and gave
-            # us no real static image), not a stylistic judgment. Everything
-            # else, however "photo-like" it scores, becomes a ranked
-            # candidate instead of a silent rejection.
-            if record.get("is_probable_video_frame"):
-                scores["filter_status"] = "EXCLUDED"
-                scores["filter_reason"] = "video ad with no real static image (thumbnail fallback)"
-                scores["rank_score"] = ""
+            apply_candidate_ranking(scores, record.get("is_probable_video_frame"))
+            if scores["filter_status"] == "EXCLUDED":
                 excluded_count += 1
             else:
-                scores["filter_status"] = "CANDIDATE"
-                scores["filter_reason"] = "(legacy heuristic note, NOT what set the rank score) " + classify_broad_static(scores)[1]
-                scores["rank_score"] = rank_score(scores)
                 candidate_count += 1
 
             if sift_signature is not None:

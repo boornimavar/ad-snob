@@ -12,8 +12,12 @@ data steps in the final product. Explain things plainly, one step at a time.
 - So: **collect on teammates' laptops**, **analyze + show online**.
 
 ## Plan
-1. **Analysis API** (next): endpoint that takes ad images/URLs and returns
-   design scores (rank_score etc.) and duplicate groups. Build and test locally.
+1. **Analysis API** (built, local): `analysis_api.py`. One search = one job:
+   `POST /jobs`, then packets of up to 50 ads (`image_url` or `image_base64`)
+   to `/jobs/<id>/ads`, then `/jobs/<id>/finish` groups duplicates across the
+   whole search (same as the old pipeline) and returns the same score columns
+   as the `ads` table. Packets are only a delivery size, never a cap on ads.
+   Dedup against the whole shared library needs the DB (step 3).
 2. **Laptop collector**: lightweight app (no torch/CLIP) that searches Meta and
    sends ads to the API. Later packaged as a single .exe (PyInstaller).
 3. **Free hosting**: analysis + dashboard on Hugging Face Spaces (enough RAM for
@@ -28,7 +32,8 @@ data steps in the final product. Explain things plainly, one step at a time.
 - With 1.4.0 a rate-limited search ends quietly with 0 ads; the dashboard should
   explain that instead of just "Search complete" (not fixed yet).
 - Request 30 ads per page (`SCRAPE_PAGE_SIZE`), 500 ads max per search. The user
-  does not want a lower cap (it drops ads; searches can't resume).
+  does not want a lower cap (it drops ads; searches can't resume). After the
+  collector's filters a search typically yields ~236-280 ads, ~380 at most.
 - Failed searches must never auto-restart (makes rate limiting worse).
 - The collector reads Meta's website, not an official API: a terms-of-service
   grey area. Don't suggest proxies or other ways around Meta's blocking.
@@ -37,6 +42,8 @@ data steps in the final product. Explain things plainly, one step at a time.
 - Windows. Python env currently borrowed from the old repo:
   `C:\indian-meta-ad-scraper\.venv313\Scripts\python.exe` (has torch, CLIP,
   collector 1.4.0). A dedicated venv for this repo is still to do.
-- Tests: `python -m pytest tests` (43 pass; they never contact Meta).
+- Tests: `python -m pytest tests` (59 pass; they never contact Meta).
+- The `.pkl` models were saved with scikit-learn 1.6/1.8; the borrowed venv
+  has 1.9.1 and warns on load. Pin a matching version in the hosted env.
 - The old prototype repo `C:\indian-meta-ad-scraper` stays untouched.
 - No GitHub remote yet - ask before creating one.
