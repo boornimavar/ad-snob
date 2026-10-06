@@ -1,5 +1,6 @@
 from types import SimpleNamespace
 
+import meta_collection
 import meta_design_scraper_session as scraper
 
 
@@ -29,7 +30,7 @@ class FakeCollector:
 
 
 def use_fake_collector(monkeypatch, ads, fail_with=None):
-    monkeypatch.setattr(scraper, "MetaAdsCollector", lambda: FakeCollector(ads, fail_with))
+    monkeypatch.setattr(meta_collection, "MetaAdsCollector", lambda: FakeCollector(ads, fail_with))
 
 
 def test_rate_limit_partway_keeps_collected_ads(monkeypatch):

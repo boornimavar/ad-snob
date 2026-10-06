@@ -1,0 +1,4 @@
+# Laptop collector only (no torch/CLIP). meta_ads_collector 1.4.0 comes from
+# meta_ads_collector_source.zip, never from pip (see CLAUDE.md).
+requests>=2.31,<3.0
+curl_cffi>=0.7,<1.0

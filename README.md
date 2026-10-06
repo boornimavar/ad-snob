@@ -66,6 +66,21 @@ extra fields you sent under `details`. `POST /analyze` does one packet in
 one step. Set `CREATIVE_LENS_API_KEY` to require an `X-API-Key` header.
 `GET /health` checks the server is up.
 
+## Laptop collector (Step 2, command line for now)
+
+With the analysis API running (above), in a second terminal:
+
+```bash
+python collector.py skincare
+```
+
+It searches Meta from this laptop, sends the ads to the API, and prints how
+many were collected, unique, and design-led. Results are also saved in
+`collector_results/` until the shared library exists. Use `--api` (or
+`CREATIVE_LENS_API_URL`) for a service that isn't on this laptop. The
+collector needs only `requirements-collector.txt` plus `meta_ads_collector`
+1.4.0, not the AI libraries.
+
 ## Notes
 
 - Use `meta_ads_collector` **1.4.0** from `meta_ads_collector_source.zip`.

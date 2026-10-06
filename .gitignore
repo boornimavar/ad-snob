@@ -20,3 +20,6 @@ filtered_design_ads_selected.csv
 .env.*
 # Test cache
 .pytest_cache/
+
+# Collector output (until the shared library exists)
+collector_results/

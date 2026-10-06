@@ -18,8 +18,10 @@ data steps in the final product. Explain things plainly, one step at a time.
    whole search (same as the old pipeline) and returns the same score columns
    as the `ads` table. Packets are only a delivery size, never a cap on ads.
    Dedup against the whole shared library needs the DB (step 3).
-2. **Laptop collector**: lightweight app (no torch/CLIP) that searches Meta and
-   sends ads to the API. Later packaged as a single .exe (PyInstaller).
+2. **Laptop collector** (in progress): `collector.py` (command line for now)
+   searches Meta via `meta_collection.py` (no torch/CLIP) and sends ads to the
+   API as one job. Still to do: a simple window, then a single .exe
+   (PyInstaller).
 3. **Free hosting**: analysis + dashboard on Hugging Face Spaces (enough RAM for
    CLIP), shared library in a free hosted DB (Supabase/Neon) since free hosts
    lose files on restart.
@@ -32,8 +34,14 @@ data steps in the final product. Explain things plainly, one step at a time.
 - With 1.4.0 a rate-limited search ends quietly with 0 ads; the dashboard should
   explain that instead of just "Search complete" (not fixed yet).
 - Request 30 ads per page (`SCRAPE_PAGE_SIZE`), 500 ads max per search. The user
-  does not want a lower cap (it drops ads; searches can't resume). After the
-  collector's filters a search typically yields ~236-280 ads, ~380 at most.
+  does not want a lower cap (it drops ads; searches can't resume). The 500
+  counts Meta *ads*; each ad can hold several images. Real search: 67 ads ->
+  368 images -> 142 unique -> 88 design-led. The old dashboard's "Ads
+  collected" box actually counts images (~230-390 typical).
+- The OCR "no text -> 0.05" veto misses photos where Tesseract reads texture
+  as junk words (conf >= 30). A stricter veto (no words >= 80% conf) was
+  tried on 2026-10-06: 4 of 14 ads it would bury had real text, so rejected.
+  Plan is 👍/👎 retraining instead.
 - Failed searches must never auto-restart (makes rate limiting worse).
 - The collector reads Meta's website, not an official API: a terms-of-service
   grey area. Don't suggest proxies or other ways around Meta's blocking.
@@ -42,7 +50,9 @@ data steps in the final product. Explain things plainly, one step at a time.
 - Windows. Python env currently borrowed from the old repo:
   `C:\indian-meta-ad-scraper\.venv313\Scripts\python.exe` (has torch, CLIP,
   collector 1.4.0). A dedicated venv for this repo is still to do.
-- Tests: `python -m pytest tests` (59 pass; they never contact Meta).
+- Tests: `python -m pytest tests` (78 pass; they never contact Meta).
+- Don't run real Meta searches yourself; ask the user (it can rate-limit
+  their network).
 - The `.pkl` models were saved with scikit-learn 1.6/1.8; the borrowed venv
   has 1.9.1 and warns on load. Pin a matching version in the hosted env.
 - The old prototype repo `C:\indian-meta-ad-scraper` stays untouched.

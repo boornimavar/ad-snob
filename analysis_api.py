@@ -41,7 +41,10 @@ from PIL import Image
 import meta_design_scraper_session as scraper
 
 MAX_ADS_PER_PACKET = 50
-MAX_ADS_PER_JOB = 500  # matches the 500-ad search cap; real searches yield ~230-390
+# Counts images, not Meta ads: one ad can hold several images (67 ads gave
+# 368 images in a real search). 500 ads x ~6 images fits, so a real search
+# never hits this; it only stops a runaway client.
+MAX_ADS_PER_JOB = 3000
 JOB_IDLE_EXPIRY_SECONDS = 2 * 60 * 60  # forget abandoned searches
 MAX_REQUEST_BYTES = 64 * 1024 * 1024  # 50 base64 images of ~1 MB each fit comfortably
 IMAGE_FIELDS = ("image_url", "image_base64")
@@ -78,7 +81,7 @@ def _api_key_ok():
 
 @app.before_request
 def _require_api_key():
-    if request.endpoint not in ("health", None) and not _api_key_ok():
+    if request.endpoint not in ("index", "health", None) and not _api_key_ok():
         return jsonify({"error": "Missing or wrong X-API-Key header."}), 401
 
 
@@ -225,6 +228,18 @@ def _get_job(job_id):
 
 
 UNKNOWN_JOB = "Unknown job: it finished already, expired, or the server restarted. Start a new job."
+
+
+@app.route("/")
+def index():
+    return (
+        "<!doctype html><title>Creative Lens analysis service</title>"
+        "<body style='font-family:sans-serif;max-width:40em;margin:3em auto;line-height:1.5'>"
+        "<h1>Creative Lens analysis service is running</h1>"
+        "<p>This service scores ads and removes duplicates. It has no page to browse: "
+        "the collector sends ads to it. Leave this running and, in a second window, run:</p>"
+        "<pre>python collector.py beauty</pre></body>"
+    )
 
 
 @app.route("/health")

@@ -25,6 +25,7 @@ from types import SimpleNamespace
 import meta_ads_collector
 from flask import Flask, jsonify, request, send_from_directory
 
+from meta_collection import classify_failure
 from meta_design_scraper_session import (
     MASTER_DB_PATH, browse_master_db, BASE_DIR, create_database,
     run_broad_search_pipeline, ML_MODEL_PATH,
@@ -87,16 +88,6 @@ PARTIAL_MESSAGES = {
 
 _failures = {}  # target -> {"reason", "failed_at"}; guarded by _progress_lock
 _last_activity = {}  # target -> time of the last progress update; guarded by _progress_lock
-
-
-def classify_failure(exc):
-    """Map a collector exception to a reason the dashboard can explain."""
-    text = str(exc).lower()
-    if "rate limit" in text:
-        return "rate_limited"
-    if any(marker in text for marker in ("timed out", "timeout", "connection was reset", "connection reset", "recv failure", "could not connect")):
-        return "no_response"
-    return "error"
 
 
 def _mark_failed_locked(target, reason):
