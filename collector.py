@@ -84,8 +84,8 @@ class AnalysisService:
                                  f"{body.get('error') or res.text[:200]}")
         return body
 
-    def start_job(self):
-        return self._post("/jobs")["job_id"]
+    def start_job(self, category, country):
+        return self._post("/jobs", {"category": category, "country": country})["job_id"]
 
     def send_packet(self, job_id, ads):
         return self._post(f"/jobs/{job_id}/ads", {"ads": ads}, timeout=PACKET_TIMEOUT_SECONDS)
@@ -143,14 +143,14 @@ def collect(category, country, service, on_status=print, search=search_ads_broad
     ads = ads_for_service(records, category, country)
     on_status(f"Collected {len(ads)} image ads. Sending them for analysis in packets of {PACKET_SIZE}...")
 
-    job_id = service.start_job()
+    job_id = service.start_job(category, country)
     for start in range(0, len(ads), PACKET_SIZE):
         if stop_check():
             raise CollectorError(STOPPED_MESSAGE)
         reply = service.send_packet(job_id, ads[start:start + PACKET_SIZE])
         on_status(f"  analyzed {reply['total_in_job']}/{len(ads)}"
                   + (f" ({len(reply['failed'])} images could not be read)" if reply["failed"] else ""))
-    on_status("Removing duplicates across the whole search...")
+    on_status("Removing duplicates and saving to the team library...")
     final = service.finish(job_id)
 
     final["category"] = category
@@ -236,6 +236,9 @@ def main(argv=None):
     print(f"  Could not be analyzed:   {s['failed']}")
     print(f"  Unique after duplicates: {s['unique']}  ({s['duplicates']} duplicates removed)")
     print(f"  Design-led (score 0.5+): {s['design_led']}")
+    if final.get("library"):
+        print(f"  Team library:            {final['library']['new']} new, "
+              f"{final['library']['seen_again']} already there (marked as still active)")
     json_path, preview_path = save_results(final)
     print(f"Preview of the design-led ads: {preview_path}")
     print(f"Full results: {json_path}")

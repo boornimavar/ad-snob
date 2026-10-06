@@ -20,6 +20,16 @@ sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
 import meta_design_scraper_session as scraper  # noqa: E402
 import dashboard_server_temporary as server  # noqa: E402
+import analysis_api  # noqa: E402
+import library  # noqa: E402
+
+
+@pytest.fixture(autouse=True)
+def fresh_library(tmp_path, monkeypatch):
+    """Every test gets its own empty shared library."""
+    lib = library.Library(f"sqlite:///{tmp_path / 'library.db'}", library.LocalImageStore(tmp_path / "thumbnails"))
+    monkeypatch.setattr(analysis_api, "_library", lib)
+    return lib
 
 
 def make_row(**overrides):

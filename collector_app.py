@@ -149,7 +149,11 @@ class CollectorWindow:
             if final.get("warning"):
                 self.write(f"\nNote: {final['warning']}")
             self.write(f"\nDone. {s['received']} images collected, {s['unique']} unique after removing "
-                       f"duplicates, {s['design_led']} design-led (score 0.5+).\nClick Open results to see them.")
+                       f"duplicates, {s['design_led']} design-led (score 0.5+).")
+            if final.get("library"):
+                self.write(f"Team library: {final['library']['new']} new ads added, "
+                           f"{final['library']['seen_again']} were already there (marked as still active).")
+            self.write("Click Open results to see them.")
             self.open_button.configure(state="normal")
             self.set_running(False)
 

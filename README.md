@@ -66,6 +66,14 @@ extra fields you sent under `details`. `POST /analyze` does one packet in
 one step. Set `CREATIVE_LENS_API_KEY` to require an `X-API-Key` header.
 `GET /health` checks the server is up.
 
+Start a job with `{"category": "skincare", "country": "IN"}` and finishing
+it saves the search's unique ads to the shared library (with a small copy
+of each picture, since Meta's links expire). Browse it with
+`GET /library?category=skincare` (`&archived=true` for ads not seen in 14
+days, `&design_led_only=false` for everything) and `GET /library/categories`.
+By default the library is `library.db` and `thumbnails/` next to the code;
+set `CREATIVE_LENS_DATABASE_URL` to use a hosted database.
+
 ## Laptop collector (Step 2)
 
 With the analysis API running (above), open the collector window:
@@ -96,6 +104,10 @@ collector needs only `requirements-collector.txt` plus `meta_ads_collector`
 ## Tests
 
 ```bash
-python -m pip install -r requirements-dev.txt
-python -m pytest tests
+python -m venv .venv
+.venv\Scripts\python.exe -m pip install -r requirements-dev.txt
+.venv\Scripts\python.exe -m pytest tests
 ```
+
+(The AI model also needs `torch`, `torchvision` and OpenAI's `CLIP`; see the
+Dockerfile. Install `meta_ads_collector` 1.4.0 from the zip, not from pip.)

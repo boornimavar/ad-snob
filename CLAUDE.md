@@ -23,9 +23,18 @@ data steps in the final product. Explain things plainly, one step at a time.
    via `meta_collection.py` (no torch/CLIP), sends ads to the API as one job,
    and saves a preview page + JSON in `collector_results/`. Still to do: a
    single .exe (PyInstaller).
-3. **Free hosting**: analysis + dashboard on Hugging Face Spaces (enough RAM for
-   CLIP), shared library in a free hosted DB (Supabase/Neon) since free hosts
-   lose files on restart.
+3. **Free hosting** (in progress): analysis + dashboard on Hugging Face Spaces
+   (enough RAM for CLIP), shared library in Supabase (Postgres + storage)
+   since free hosts lose files on restart. Built so far: `library.py`
+   (SQLAlchemy; SQLite locally via `CREATIVE_LENS_DATABASE_URL`), saved on
+   `/jobs/<id>/finish` when the job has a category; `GET /library`,
+   `/library/categories`, `/thumbnails/<key>`. Decided with the user
+   (2026-10-06): only unique ads are stored, one row per ad per
+   category+country; an ad unseen for 14 days moves to an Archive (never
+   deleted); each unique ad keeps a ~600px JPEG copy because Meta image
+   links expire within days. Still to do: Supabase image store, online
+   dashboard reading the library, deploy. The `.exe` waits until the
+   service is online.
 4. **Improvements**: 👍/👎 labels in the gallery feeding `--retrain`.
 
 ## Hard-won facts
@@ -48,14 +57,17 @@ data steps in the final product. Explain things plainly, one step at a time.
   grey area. Don't suggest proxies or other ways around Meta's blocking.
 
 ## Working environment
-- Windows. Python env currently borrowed from the old repo:
-  `C:\indian-meta-ad-scraper\.venv313\Scripts\python.exe` (has torch, CLIP,
-  collector 1.4.0). A dedicated venv for this repo is still to do.
-- Tests: `python -m pytest tests` (91 pass; they never contact Meta).
+- Windows. Project env: `C:\creative-lens\.venv\Scripts\python.exe` (Python
+  3.13, torch CPU, CLIP from git, scikit-learn 1.8.0 to match
+  rank_model_v1.pkl, collector 1.4.0 unzipped from the zip into
+  site-packages). `design_classifier.pkl` (sklearn 1.6.1) still warns; it is
+  diagnostics only.
+- Tests: `.venv\Scripts\python.exe -m pytest tests` (105 pass; they never contact Meta).
   Window tests share one Tk root: creating many in one process intermittently
   fails here with "Can't find a usable init.tcl".
 - Don't run real Meta searches yourself; ask the user (it can rate-limit
-  their network).
+  their network). The user may have their own analysis_api running on port
+  8000; run test services on another port and don't stop theirs.
 - The `.pkl` models were saved with scikit-learn 1.6/1.8; the borrowed venv
   has 1.9.1 and warns on load. Pin a matching version in the hosted env.
 - The old prototype repo `C:\indian-meta-ad-scraper` stays untouched.

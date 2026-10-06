@@ -23,3 +23,7 @@ filtered_design_ads_selected.csv
 
 # Collector output (until the shared library exists)
 collector_results/
+
+# Shared library when run locally
+library.db
+thumbnails/

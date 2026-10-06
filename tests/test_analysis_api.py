@@ -285,3 +285,50 @@ def test_idle_jobs_expire(api, monkeypatch):
     monkeypatch.setattr(analysis_api.time, "time", lambda: now + analysis_api.JOB_IDLE_EXPIRY_SECONDS + 1)
 
     assert api.post(f"/jobs/{job_id}/finish").status_code == 404
+
+
+# --- the shared library ------------------------------------------------------
+
+def test_finishing_a_job_with_a_category_saves_unique_ads(api, fresh_library):
+    job_id = api.post("/jobs", json={"category": "Skincare", "country": "in"}).get_json()["job_id"]
+    send_packet(api, job_id, [
+        {"id": "a", "image_base64": png_base64("red"), "brand": "Dot & Key"},
+        {"id": "copy", "image_base64": png_base64("red")},
+        {"id": "b", "image_base64": png_base64("blue")},
+    ])
+
+    data = api.post(f"/jobs/{job_id}/finish").get_json()
+
+    assert data["library"] == {"new": 2, "seen_again": 0}
+    rows = fresh_library.browse("skincare", "IN", design_led_only=False)
+    assert sorted(r["image_hash"][:6] for r in rows) == ["0000ff", "ff0000"]
+    assert all(r["thumbnail_url"] for r in rows)
+
+
+def test_job_without_category_is_not_saved(api, fresh_library):
+    job_id = start_job(api)
+    send_packet(api, job_id, [{"id": "a", "image_base64": png_base64("red")}])
+
+    assert "library" not in api.post(f"/jobs/{job_id}/finish").get_json()
+    assert fresh_library.browse(design_led_only=False) == []
+
+
+def test_library_can_be_browsed_without_the_key(api, monkeypatch):
+    job_id = api.post("/jobs", json={"category": "skincare"}).get_json()["job_id"]
+    send_packet(api, job_id, [{"id": "a", "image_base64": png_base64("red")}])
+    api.post(f"/jobs/{job_id}/finish")
+    monkeypatch.setenv("CREATIVE_LENS_API_KEY", "secret")
+
+    rows = api.get("/library?category=skincare&design_led_only=false").get_json()["ads"]
+    picture = api.get(rows[0]["thumbnail_url"])
+    categories = api.get("/library/categories").get_json()["categories"]
+
+    assert len(rows) == 1
+    assert picture.status_code == 200 and picture.mimetype == "image/jpeg"
+    assert Image.open(io.BytesIO(picture.data)).format == "JPEG"
+    assert categories == [{"category": "skincare", "country": "IN", "active": 1, "archived": 0}]
+    assert api.post("/jobs").status_code == 401  # writing still needs the key
+
+
+def test_unknown_thumbnail_is_404(api):
+    assert api.get("/thumbnails/nope.jpg").status_code == 404

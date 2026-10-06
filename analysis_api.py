@@ -35,9 +35,10 @@ import secrets
 import threading
 import time
 
-from flask import Flask, jsonify, request
+from flask import Flask, abort, jsonify, request, send_from_directory
 from PIL import Image
 
+import library as library_module
 import meta_design_scraper_session as scraper
 
 MAX_ADS_PER_PACKET = 50
@@ -58,6 +59,17 @@ app.config["MAX_CONTENT_LENGTH"] = MAX_REQUEST_BYTES
 # changed while holding this lock.
 _analysis_lock = threading.Lock()
 _models_loaded = False
+
+_library = None
+
+
+def get_library():
+    """The shared library, created on first use (see library.py for settings)."""
+    global _library
+    if _library is None:
+        _library = library_module.library_from_environment()
+    return _library
+
 
 # In memory only: a job lives for the few minutes one search takes. If the
 # server restarts mid-search, the collector gets "unknown job" and starts over.
@@ -81,7 +93,7 @@ def _api_key_ok():
 
 @app.before_request
 def _require_api_key():
-    if request.endpoint not in ("index", "health", None) and not _api_key_ok():
+    if request.method == "POST" and not _api_key_ok():
         return jsonify({"error": "Missing or wrong X-API-Key header."}), 401
 
 
@@ -151,21 +163,23 @@ def _load_images(ads):
 def score_ads(ads):
     """Run the full image analysis on one packet.
 
-    Returns one entry per ad: {"ad", "row", "error"}. "ad" is the request
-    entry without the image bytes; "row" is None when the ad failed.
+    Returns one entry per ad: {"ad", "row", "error", "thumbnail"}. "ad" is the
+    request entry without the image bytes; "row" is None when the ad failed;
+    "thumbnail" is a small JPEG copy for the library.
     """
     images, errors = _load_images(ads)
     try:
         analyses = []
         for start in range(0, len(images), scraper.CLIP_BATCH_SIZE):
             analyses.extend(scraper.analyze_images_batch(images[start:start + scraper.CLIP_BATCH_SIZE]))
+        thumbnails = [library_module.make_thumbnail(image) if image is not None else None for image in images]
     finally:
         for image in images:
             if image is not None:
                 image.close()
 
     scored = []
-    for ad, analysis, error in zip(ads, analyses, errors):
+    for ad, analysis, error, thumbnail in zip(ads, analyses, errors, thumbnails):
         row = None
         if analysis is None:
             error = error or "The image could not be analyzed."
@@ -180,7 +194,8 @@ def score_ads(ads):
                 "duplicate": 0,
                 **scores,
             }
-        scored.append({"ad": {k: v for k, v in ad.items() if k != "image_base64"}, "row": row, "error": error})
+        scored.append({"ad": {k: v for k, v in ad.items() if k != "image_base64"}, "row": row, "error": error,
+                       "thumbnail": thumbnail if row is not None else None})
     return scored
 
 
@@ -249,10 +264,16 @@ def health():
 
 @app.route("/jobs", methods=["POST"])
 def create_job():
+    """Body (optional): {"category": "...", "country": "IN"}. With a category,
+    finishing the job saves its unique ads to the shared library."""
+    body = request.get_json(silent=True) or {}
+    category = str(body.get("category") or "").strip() if isinstance(body, dict) else ""
+    country = str(body.get("country") or "IN").strip().upper() if isinstance(body, dict) else "IN"
     job_id = secrets.token_urlsafe(16)
     with _jobs_lock:
         _expire_idle_jobs_locked()
-        _jobs[job_id] = {"scored": [], "ids": set(), "last_activity": time.time()}
+        _jobs[job_id] = {"scored": [], "ids": set(), "last_activity": time.time(),
+                         "category": category, "country": country}
     return jsonify({"job_id": job_id}), 201
 
 
@@ -295,7 +316,11 @@ def finish_job(job_id):
             job = _jobs.pop(job_id, None)
         if job is None:
             return _error(UNKNOWN_JOB, 404)
-        return jsonify({"job_id": job_id, **final_results(job["scored"])})
+        body = {"job_id": job_id, **final_results(job["scored"])}
+        if job["category"]:
+            thumbnails = {str(e["ad"]["id"]): e["thumbnail"] for e in job["scored"] if e["thumbnail"]}
+            body["library"] = get_library().save_search(job["category"], job["country"], body["results"], thumbnails)
+        return jsonify(body)
 
 
 @app.route("/analyze", methods=["POST"])
@@ -306,6 +331,31 @@ def analyze():
     with _analysis_lock:
         _ensure_models_loaded()
         return jsonify(final_results(score_ads(ads)))
+
+
+@app.route("/library")
+def browse_library():
+    """Gallery data: ?category=&country=&archived=true&design_led_only=false"""
+    args = request.args
+    rows = get_library().browse(
+        category=args.get("category") or None, country=args.get("country") or None,
+        archived=args.get("archived", "false").lower() == "true",
+        design_led_only=args.get("design_led_only", "true").lower() == "true",
+    )
+    return jsonify({"ads": rows})
+
+
+@app.route("/library/categories")
+def library_categories():
+    return jsonify({"categories": get_library().categories()})
+
+
+@app.route("/thumbnails/<key>")
+def thumbnail(key):
+    store = get_library().images
+    if not isinstance(store, library_module.LocalImageStore):
+        abort(404)
+    return send_from_directory(store.folder, key, mimetype="image/jpeg", max_age=7 * 24 * 3600)
 
 
 @app.errorhandler(413)
