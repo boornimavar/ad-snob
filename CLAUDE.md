@@ -17,7 +17,8 @@ data steps in the final product. Explain things plainly, one step at a time.
    to `/jobs/<id>/ads`, then `/jobs/<id>/finish` groups duplicates across the
    whole search (same as the old pipeline) and returns the same score columns
    as the `ads` table. Packets are only a delivery size, never a cap on ads.
-   Dedup against the whole shared library needs the DB (step 3).
+   The library then matches ads against earlier searches (same image hash
+   or crop pHash <= 6), without SIFT.
 2. **Laptop collector** (in progress): `collector_app.py` (tkinter window:
    Collect / Stop / Open results) around `collector.py`, which searches Meta
    via `meta_collection.py` (no torch/CLIP), sends ads to the API as one job,
@@ -68,7 +69,5 @@ data steps in the final product. Explain things plainly, one step at a time.
 - Don't run real Meta searches yourself; ask the user (it can rate-limit
   their network). The user may have their own analysis_api running on port
   8000; run test services on another port and don't stop theirs.
-- The `.pkl` models were saved with scikit-learn 1.6/1.8; the borrowed venv
-  has 1.9.1 and warns on load. Pin a matching version in the hosted env.
 - The old prototype repo `C:\indian-meta-ad-scraper` stays untouched.
 - No GitHub remote yet - ask before creating one.
