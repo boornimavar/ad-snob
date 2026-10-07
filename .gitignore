@@ -28,3 +28,7 @@ collector_results/
 library.db
 thumbnails/
 demo.log
+
+# App build output (build_app.py)
+build/
+dist/

@@ -37,7 +37,19 @@ it only returns political/social-issue ads.
    (`expire_old_results`, `has_fresh_results`, kept across restarts), the
    "0 ads = probably rate-limited" message, `/api/health` + a page heartbeat
    so the app exits 15 min after the page closes. `collector.py` stays as
-   the command-line version. Still to do: a single .exe (PyInstaller).
+   the command-line version. **Windows app built (2026-10-07):** `build_app.py`
+   -> dist/Creative-Lens-Windows.zip (0.71 GB zip, 1.41 GB unpacked;
+   PyInstaller onedir, no console). Bundles CLIP weights, ranking models,
+   dashboard.html and Tesseract (exe + DLLs + tessdata) and points the app at
+   them via env vars in `demo.use_packaged_files`; user data goes to
+   %LOCALAPPDATA%/Creative Lens. Gotchas fixed: torchvision 0.29's
+   `*_stable.pyd` must be added by hand ("operator torchvision::nms does not
+   exist"); torch's deep license folders broke Extract All (260-char paths),
+   so they're zipped and the build fails above 130 chars. `Creative Lens.exe
+   --self-test` checks model + OCR without Meta (passed with Python, PATH and
+   the CLIP cache hidden: 41 s first run, 14 s after). Shared via a PUBLIC
+   Hugging Face repo (user's choice) with `publish_app.py`; this build holds
+   no keys. Next: a colleague tests it on a laptop without Python.
 3. **Free hosting** (in progress, Option A): `library.py` has the matching
    rules once (`_LibraryRules`) and two stores: `Library` (SQLAlchemy;
    SQLite locally) and `SupabaseLibrary` (Supabase REST + Storage, signed in

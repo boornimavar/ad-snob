@@ -1,3 +1,4 @@
 -r requirements.txt
 pytest>=8.0,<10.0
 huggingface_hub>=0.30,<2.0  # deploy_space.py
+pyinstaller>=6.10,<7  # build_app.py

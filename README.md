@@ -87,6 +87,22 @@ app stops by itself 15 minutes after the page is closed. Log: `demo.log`.
 (The same dashboard without the shortcut: `python dashboard_server_temporary.py`,
 then http://127.0.0.1:5000. Command-line search: `python collector.py skincare`.)
 
+## Building the Windows app
+
+```bash
+.venv\Scripts\python.exe -m pip install "pyinstaller>=6.10,<7"
+.venv\Scripts\python.exe build_app.py
+```
+
+Makes `dist/Creative-Lens-Windows.zip` (about 0.7 GB): unzip, double-click
+`Creative Lens.exe`, nothing else to install. `Creative Lens.exe --self-test`
+checks the AI model and text reader work. To share it on Hugging Face:
+
+```bash
+.venv\Scripts\hf auth login
+.venv\Scripts\python.exe publish_app.py YOUR-USERNAME/creative-lens-app
+```
+
 ## Notes
 
 - Use `meta_ads_collector` **1.4.0** from `meta_ads_collector_source.zip`.

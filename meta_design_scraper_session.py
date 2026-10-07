@@ -26,7 +26,9 @@ from meta_collection import clean_text, get_attr, safe_name, search_ads_broad  #
 # import meta_ads_collector.client as _mac_client
 # _mac_client.DOC_ID_SEARCH = "24922295957467452"  # Meta changed this on/before Oct 2026
 if os.name == "nt":
-    pytesseract.pytesseract.tesseract_cmd = r"C:\Program Files\Tesseract-OCR\tesseract.exe"  # Windows only; Linux uses PATH
+    # Windows only; Linux uses PATH. The packaged app points this at its own copy.
+    pytesseract.pytesseract.tesseract_cmd = os.environ.get(
+        "CREATIVE_LENS_TESSERACT", r"C:\Program Files\Tesseract-OCR\tesseract.exe")
 
 # ============================================================
 # CONFIGURATION
@@ -203,7 +205,9 @@ def load_models(model_path: Path):
 
     _clip_device = "cuda" if torch.cuda.is_available() else "cpu"
     print(f"[MODEL] Loading CLIP on {_clip_device}...")
-    _clip_model, _clip_preprocess = clip.load("ViT-B/32", device=_clip_device)
+    # The packaged app ships the weights and sets CREATIVE_LENS_CLIP_DIR; otherwise ~/.cache/clip.
+    _clip_model, _clip_preprocess = clip.load("ViT-B/32", device=_clip_device,
+                                              download_root=os.environ.get("CREATIVE_LENS_CLIP_DIR"))
     _clip_model.eval()
 
     if model_path.exists():
