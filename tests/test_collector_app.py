@@ -175,3 +175,29 @@ def test_runner_creates_the_service_on_the_first_search_only():
     events_until_end(runner)
 
     assert made == [1] and runner.service == "svc"
+
+
+def test_open_results_goes_to_the_gallery_when_one_is_running(window, monkeypatch):
+    opened = []
+    monkeypatch.setattr(collector_app.webbrowser, "open", opened.append)
+    monkeypatch.setenv("CREATIVE_LENS_GALLERY_URL", "http://127.0.0.1:8050/")
+    window.category.insert(0, "skin care")
+    window.start()
+    window.handle(("done", {**FINAL, "category": "skin care", "country": "IN"}, Path("x.html")))
+
+    window.open_results()
+
+    assert opened == ["http://127.0.0.1:8050/#category=skin+care&country=IN"]
+
+
+def test_open_results_falls_back_to_the_preview_page(window, monkeypatch, tmp_path):
+    opened = []
+    monkeypatch.setattr(collector_app.webbrowser, "open", opened.append)
+    monkeypatch.delenv("CREATIVE_LENS_GALLERY_URL", raising=False)
+    window.category.insert(0, "skincare")
+    window.start()
+    window.handle(("done", FINAL, tmp_path / "x.html"))
+
+    window.open_results()
+
+    assert opened == [(tmp_path / "x.html").resolve().as_uri()]

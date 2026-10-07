@@ -362,9 +362,10 @@ SUPABASE_SETTINGS = ("SUPABASE_URL", "SUPABASE_PUBLISHABLE_KEY",
 
 def library_from_environment():
     """The team's Supabase library when all SUPABASE_SETTINGS are set (the
-    collector reads them from .env); otherwise a local SQL library
+    collector reads them from .env) and CREATIVE_LENS_LIBRARY isn't "local";
+    otherwise a local SQL library
     (CREATIVE_LENS_DATABASE_URL, default library.db + thumbnails/ in the data dir)."""
-    if all(os.environ.get(name) for name in SUPABASE_SETTINGS):
+    if os.environ.get("CREATIVE_LENS_LIBRARY") != "local" and all(os.environ.get(n) for n in SUPABASE_SETTINGS):
         return SupabaseLibrary(*(os.environ[name] for name in SUPABASE_SETTINGS))
     database_url = os.environ.get("CREATIVE_LENS_DATABASE_URL") or f"sqlite:///{scraper.BASE_DIR / 'library.db'}"
     thumbnails = os.environ.get("CREATIVE_LENS_THUMBNAIL_DIR") or scraper.BASE_DIR / "thumbnails"

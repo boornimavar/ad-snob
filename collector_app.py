@@ -3,10 +3,12 @@
 Type what to search for, click Collect, watch progress, then open the
 results. Run with:  python collector_app.py
 """
+import os
 import queue
 import threading
 import tkinter as tk
 import webbrowser
+from urllib.parse import urlencode
 from tkinter import ttk
 from tkinter.scrolledtext import ScrolledText
 
@@ -65,6 +67,7 @@ class CollectorWindow:
         self.root = root
         self.runner = runner
         self.preview_path = None
+        self.last_search = None
 
         root.title("Creative Lens Collector")
         root.minsize(560, 420)
@@ -149,6 +152,7 @@ class CollectorWindow:
             self.set_running(False)
         elif kind == "done":
             final, self.preview_path = event[1], event[2]
+            self.last_search = (final.get("category", ""), final.get("country", ""))
             s = final["summary"]
             if final.get("warning"):
                 self.write(f"\nNote: {final['warning']}")
@@ -165,7 +169,13 @@ class CollectorWindow:
             self.set_running(False)
 
     def open_results(self):
-        if self.preview_path:
+        """The gallery at this search's category when one is running
+        (CREATIVE_LENS_GALLERY_URL, set by demo.py), else the saved preview page."""
+        gallery = os.environ.get("CREATIVE_LENS_GALLERY_URL")
+        if gallery and self.last_search:
+            category, country = self.last_search
+            webbrowser.open(f"{gallery}#{urlencode({'category': category, 'country': country})}")
+        elif self.preview_path:
             webbrowser.open(self.preview_path.resolve().as_uri())
 
 

@@ -308,3 +308,13 @@ def test_environment_picks_supabase_only_when_fully_configured(monkeypatch, tmp_
 
     monkeypatch.delenv("CREATIVE_LENS_COLLECTOR_PASSWORD")
     assert isinstance(library.library_from_environment(), library.Library)
+
+
+def test_local_switch_overrides_supabase_settings(monkeypatch, tmp_path):
+    monkeypatch.setenv("CREATIVE_LENS_DATABASE_URL", f"sqlite:///{tmp_path / 'env.db'}")
+    monkeypatch.setenv("CREATIVE_LENS_THUMBNAIL_DIR", str(tmp_path / "t"))
+    for name in library.SUPABASE_SETTINGS:
+        monkeypatch.setenv(name, "x")
+    monkeypatch.setenv("CREATIVE_LENS_LIBRARY", "local")
+
+    assert isinstance(library.library_from_environment(), library.Library)

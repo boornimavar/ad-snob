@@ -74,6 +74,14 @@ days, `&design_led_only=false` for everything) and `GET /library/categories`.
 By default the library is `library.db` and `thumbnails/` next to the code;
 set `CREATIVE_LENS_DATABASE_URL` to use a hosted database.
 
+## One-click demo (everything on one laptop)
+
+Double-click the **Creative Lens** shortcut on the Desktop (it runs
+`.venv\Scripts\pythonw.exe demo.py`). The Collector window opens and the
+gallery opens in the browser. Searches are scored on the laptop and saved to
+the local library (`library.db`, `thumbnails/`); **Open results** jumps to
+that category in the gallery. Log: `demo.log`.
+
 ## Laptop collector (Step 2)
 
 With the analysis API running (above), open the collector window:

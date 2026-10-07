@@ -27,3 +27,4 @@ collector_results/
 # Shared library when run locally
 library.db
 thumbnails/
+demo.log
