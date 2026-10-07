@@ -95,8 +95,13 @@ dialog::backdrop{background:#000a}
 </div>
 <dialog id="dialog"></dialog>
 
+<!-- Online: config.js sets window.CREATIVE_LENS = {supabaseUrl, publishableKey} and the
+     page reads the team library from Supabase. Without it, it reads the local service. -->
+<script src="config.js"></script>
 <script>
 const ARCHIVE_DAYS = 14;
+const DESIGN_LED_MIN = 0.5;
+const SUPABASE = window.CREATIVE_LENS && window.CREATIVE_LENS.supabaseUrl ? window.CREATIVE_LENS : null;
 const state = {category: "", country: "", archived: false, designLed: true, categories: []};
 
 function el(tag, attrs = {}, ...children) {
@@ -128,7 +133,7 @@ function writeHash() {
 }
 
 function shortDate(text) {
-  const d = new Date(text.replace(" ", "T") + "Z");
+  const d = new Date(text.includes("T") ? text : text.replace(" ", "T") + "Z");
   return d.toLocaleDateString(undefined, {day: "numeric", month: "short"});
 }
 
@@ -203,10 +208,47 @@ function showDetail(ad) {
   dialog.showModal();
 }
 
-async function getJSON(url) {
-  const res = await fetch(url);
+async function getJSON(url, headers = {}) {
+  const res = await fetch(url, {headers});
   if (!res.ok) throw new Error(`${res.status} ${res.statusText}`);
   return res.json();
+}
+
+function categoryKey(category) {
+  return category.trim().split(/\s+/).join(" ").toLowerCase();
+}
+
+async function loadCategories() {
+  if (!SUPABASE) {
+    return (await getJSON("library/categories?design_led_only=" + state.designLed)).categories;
+  }
+  const rows = await getJSON(`${SUPABASE.supabaseUrl}/rest/v1/ad_categories?select=*`, {apikey: SUPABASE.publishableKey});
+  return rows.map(r => ({category: r.category, country: r.country,
+    active: state.designLed ? r.active_design_led : r.active,
+    archived: state.designLed ? r.archived_design_led : r.archived}));
+}
+
+async function loadAds() {
+  if (!SUPABASE) {
+    const q = new URLSearchParams({archived: state.archived, design_led_only: state.designLed});
+    if (state.category) q.set("category", state.category);
+    if (state.country) q.set("country", state.country);
+    return (await getJSON("library?" + q)).ads;
+  }
+  const cutoff = new Date(Date.now() - ARCHIVE_DAYS * 864e5).toISOString();
+  const q = new URLSearchParams({
+    select: "id,category,country,brand,image_url,thumbnail_key,rank_score,creative_variant_count,details,first_seen_at,last_seen_at,times_seen",
+    last_seen_at: (state.archived ? "lt." : "gte.") + cutoff,
+    order: "rank_score.desc.nullslast,id.asc", limit: "1000"});
+  if (state.designLed) q.set("rank_score", "gte." + DESIGN_LED_MIN);
+  if (state.category) q.set("category_key", "eq." + categoryKey(state.category));
+  if (state.country) q.set("country", "eq." + state.country);
+  const rows = await getJSON(`${SUPABASE.supabaseUrl}/rest/v1/ads?${q}`, {apikey: SUPABASE.publishableKey});
+  for (const r of rows) {
+    r.thumbnail_url = r.thumbnail_key
+      ? `${SUPABASE.supabaseUrl}/storage/v1/object/public/thumbnails/${encodeURIComponent(r.thumbnail_key)}` : null;
+  }
+  return rows;
 }
 
 async function refresh() {
@@ -214,14 +256,11 @@ async function refresh() {
   document.getElementById("tab-active").setAttribute("aria-pressed", String(!state.archived));
   document.getElementById("tab-archive").setAttribute("aria-pressed", String(state.archived));
   document.getElementById("design-led").checked = state.designLed;
-  const q = new URLSearchParams({archived: state.archived, design_led_only: state.designLed});
-  if (state.category) q.set("category", state.category);
-  if (state.country) q.set("country", state.country);
   try {
-    const [cats, lib] = await Promise.all([getJSON("library/categories?design_led_only=" + state.designLed), getJSON("library?" + q)]);
-    state.categories = cats.categories;
+    const [categories, ads] = await Promise.all([loadCategories(), loadAds()]);
+    state.categories = categories;
     renderCategories();
-    renderAds(lib.ads);
+    renderAds(ads);
   } catch (err) {
     document.getElementById("grid").replaceChildren(el("div", {class: "empty"}, `Couldn't load the library (${err.message}). Try refreshing.`));
   }

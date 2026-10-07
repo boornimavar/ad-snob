@@ -127,6 +127,30 @@ class LocalAnalysis:
             return self._api.finish_job_results(job_id, job, self._library)
 
 
+def settings_file():
+    """The private .env next to the program (next to the .exe once packaged)."""
+    folder = Path(sys.executable).parent if getattr(sys, "frozen", False) else Path(__file__).resolve().parent
+    return folder / ".env"
+
+
+def load_settings(path=None):
+    """Read KEY=VALUE lines from the .env file into the environment.
+    Values already set in the environment win. Returns the names it read."""
+    path = Path(path) if path else settings_file()
+    if not path.exists():
+        return []
+    names = []
+    for line in path.read_text(encoding="utf-8-sig").splitlines():
+        line = line.strip()
+        if not line or line.startswith("#") or "=" not in line:
+            continue
+        name, value = (part.strip() for part in line.split("=", 1))
+        if name and value:
+            os.environ.setdefault(name, value.strip('"').strip("'"))
+            names.append(name)
+    return names
+
+
 def default_service():
     """Score on this laptop, unless CREATIVE_LENS_API_URL points at a service."""
     url = os.environ.get("CREATIVE_LENS_API_URL")
@@ -259,6 +283,7 @@ def main(argv=None):
     parser.add_argument("--api", default=os.environ.get("CREATIVE_LENS_API_URL"),
                         help=f"use an analysis service (e.g. {DEFAULT_API_URL}) instead of scoring on this laptop")
     args = parser.parse_args(argv)
+    load_settings()
 
     service = (AnalysisService(args.api, os.environ.get("CREATIVE_LENS_API_KEY")) if args.api
                else LocalAnalysis())

@@ -33,21 +33,20 @@ it only returns political/social-issue ads.
    via `meta_collection.py` (no torch/CLIP), sends ads to the API as one job,
    and saves a preview page + JSON in `collector_results/`. Still to do: a
    single .exe (PyInstaller).
-3. **Free hosting** (in progress): analysis + dashboard on Hugging Face Spaces
-   (enough RAM for CLIP), shared library in Supabase (Postgres + storage)
-   since free hosts lose files on restart. Built so far: `library.py`
-   (SQLAlchemy; SQLite locally via `CREATIVE_LENS_DATABASE_URL`), saved on
-   `/jobs/<id>/finish` when the job has a category; `GET /library`,
-   `/library/categories`, `/thumbnails/<key>`. Decided with the user
-   (2026-10-06): only unique ads are stored, one row per ad per
-   category+country; an ad unseen for 14 days moves to an Archive (never
-   deleted); each unique ad keeps a ~600px JPEG copy because Meta image
-   links expire within days. Built: Supabase image store, gallery at `/`
-   (`gallery.html`), `Dockerfile` for a HF Docker Space (port 7860, one
-   gunicorn worker since jobs live in memory), `deploy_space.py` (HF API
-   upload; plain git push is rejected for binaries). The collector's key is
-   in the private `.env` (never print it). Still to do: first deploy and
-   check, then the `.exe`.
+3. **Free hosting** (in progress, Option A): `library.py` has the matching
+   rules once (`_LibraryRules`) and two stores: `Library` (SQLAlchemy;
+   SQLite locally) and `SupabaseLibrary` (Supabase REST + Storage, signed in
+   as a "collector" Auth user; RLS lets it insert/update, never delete;
+   anyone reads). `supabase_setup.sql` creates the table, policies and the
+   `ad_categories` view. The collector reads its 4 settings from the private
+   `.env` (`collector.load_settings`; never print it). `gallery.html` reads
+   Supabase when `config.js` exists (public URL + publishable key only;
+   `deploy_space.py` builds it and refuses secret keys) and is published to a
+   free HF Static Space. Decided with the user (2026-10-06): only unique ads
+   are stored, one row per ad per category+country; unseen 14 days ->
+   Archive (never deleted); each unique ad keeps a ~600px JPEG copy because
+   Meta image links expire within days. Still to do: user's Supabase setup +
+   first real search into it, publish the gallery, then the `.exe`.
 4. **Improvements**: 👍/👎 labels in the gallery feeding `--retrain`.
 
 ## Hard-won facts
@@ -75,7 +74,7 @@ it only returns political/social-issue ads.
   rank_model_v1.pkl, collector 1.4.0 unzipped from the zip into
   site-packages). `design_classifier.pkl` (sklearn 1.6.1) still warns; it is
   diagnostics only.
-- Tests: `.venv\Scripts\python.exe -m pytest tests` (105 pass; they never contact Meta).
+- Tests: `.venv\Scripts\python.exe -m pytest tests` (129 pass; they never contact Meta or Supabase).
   Window tests share one Tk root: creating many in one process intermittently
   fails here with "Can't find a usable init.tcl".
 - Don't run real Meta searches yourself; ask the user (it can rate-limit

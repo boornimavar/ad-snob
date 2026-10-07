@@ -49,7 +49,7 @@ python dashboard_server_temporary.py
 python analysis_api.py
 ```
 
-Starts on http://127.0.0.1:8000. One search is one job; its ads are sent
+Starts on http://127.0.0.1:8000 (for local testing). One search is one job; its ads are sent
 in packets of up to 50 (a delivery size, not a limit on the search):
 
 ```
@@ -94,21 +94,28 @@ library exists. Use `--api` (or
 collector needs only `requirements-collector.txt` plus `meta_ads_collector`
 1.4.0, not the AI libraries.
 
-## Going online (Hugging Face + Supabase)
+## Going online (free: Supabase + a Hugging Face Static Space)
 
-The service and gallery run as a Hugging Face Docker Space (`Dockerfile`,
-`space_README.md`); the library lives in Supabase (Postgres + a public
-`thumbnails` storage bucket). The Space needs four secrets:
-`CREATIVE_LENS_DATABASE_URL` (Supabase "Session pooler" connection string),
-`SUPABASE_URL`, `SUPABASE_SECRET_KEY`, and `CREATIVE_LENS_API_KEY` (the
-collector's password; a generated one is in the private `.env` file).
+Hugging Face's free plan only runs static pages, so the scoring happens on
+the laptops: the Collector searches Meta, scores the ads, and saves them to
+the team's Supabase project. The gallery is a static page that reads it.
 
-To upload a new version:
+1. **Supabase, once:** run `supabase_setup.sql` in the SQL Editor, create a
+   public `thumbnails` bucket, add a "collector" user (Authentication →
+   Users), and turn off new sign-ups. The collector user can add and update
+   ads but never delete them; anyone can read.
+2. **Each laptop:** fill in the private `.env` next to the Collector
+   (`SUPABASE_URL`, `SUPABASE_PUBLISHABLE_KEY`,
+   `CREATIVE_LENS_COLLECTOR_EMAIL`, `CREATIVE_LENS_COLLECTOR_PASSWORD`).
+3. **Gallery:** create a free Static Space, then:
 
 ```bash
 .venv\Scripts\hf auth login
 .venv\Scripts\python.exe deploy_space.py YOUR-USERNAME/creative-lens
 ```
+
+`analysis_api.py` still runs the same scoring as a local web service
+(`python analysis_api.py`) for testing.
 
 ## Notes
 

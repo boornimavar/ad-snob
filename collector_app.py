@@ -170,6 +170,7 @@ class CollectorWindow:
 
 
 def main():
+    collector.load_settings()
     root = tk.Tk()
     CollectorWindow(root, SearchRunner())
     root.mainloop()

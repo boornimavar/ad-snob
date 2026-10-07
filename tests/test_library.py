@@ -1,7 +1,7 @@
 """Tests for the shared ad library (SQLite in a temp folder)."""
 import io
 import json
-from datetime import timedelta
+from datetime import timedelta, timezone
 
 import pytest
 from PIL import Image
@@ -135,65 +135,6 @@ def test_make_thumbnail_is_a_small_jpeg():
     assert len(data) < 60_000
 
 
-# --- online settings: Supabase -------------------------------------------------
-
-class FakeStorage:
-    def __init__(self, status=200):
-        self.status, self.calls = status, []
-
-    def post(self, url, data=None, headers=None, timeout=None):
-        self.calls.append((url, data, headers))
-        return type("Res", (), {"status_code": self.status, "text": "denied"})()
-
-
-def test_supabase_store_uploads_and_links_publicly():
-    session = FakeStorage()
-    store = library.SupabaseImageStore("https://abc.supabase.co/", "sb_secret_xyz", session=session)
-
-    store.save("ffff.jpg", b"jpeg")
-
-    url, data, headers = session.calls[0]
-    assert url == "https://abc.supabase.co/storage/v1/object/thumbnails/ffff.jpg" and data == b"jpeg"
-    assert headers["apikey"] == "sb_secret_xyz" and "Authorization" not in headers
-    assert headers["x-upsert"] == "true" and headers["Content-Type"] == "image/jpeg"
-    assert store.url_for("ffff.jpg") == "https://abc.supabase.co/storage/v1/object/public/thumbnails/ffff.jpg"
-
-
-def test_supabase_store_sends_older_jwt_keys_as_bearer_too():
-    store = library.SupabaseImageStore("https://abc.supabase.co", "eyJhbGciOi.payload.sig", session=FakeStorage())
-    assert store.headers["Authorization"] == "Bearer eyJhbGciOi.payload.sig"
-
-
-def test_a_failed_picture_upload_keeps_the_ad(tmp_path):
-    store = library.SupabaseImageStore("https://abc.supabase.co", "sb_secret_xyz", session=FakeStorage(status=403))
-    lib = library.Library(f"sqlite:///{tmp_path / 'l.db'}", store)
-
-    counts = lib.save_search("skincare", "IN", [result("a", "ffff000000000000")], {"a": b"jpeg"}, now=T0)
-
-    assert counts == {"new": 1, "seen_again": 0}
-    assert lib.browse("skincare", now=T0)[0]["thumbnail_url"] is None
-
-
-@pytest.mark.parametrize("given, expected", [
-    ("postgresql://u:p@host:5432/postgres", "postgresql+psycopg://u:p@host:5432/postgres"),
-    ("postgres://u:p@host/db", "postgresql+psycopg://u:p@host/db"),
-    ("sqlite:///x.db", "sqlite:///x.db"),
-])
-def test_database_url_uses_psycopg(given, expected):
-    assert library.sqlalchemy_url(given) == expected
-
-
-def test_environment_picks_supabase_when_configured(monkeypatch, tmp_path):
-    monkeypatch.setenv("CREATIVE_LENS_DATABASE_URL", f"sqlite:///{tmp_path / 'env.db'}")
-    monkeypatch.setenv("SUPABASE_URL", "https://abc.supabase.co")
-    monkeypatch.setenv("SUPABASE_SECRET_KEY", "sb_secret_xyz")
-    assert isinstance(library.library_from_environment().images, library.SupabaseImageStore)
-
-    monkeypatch.delenv("SUPABASE_SECRET_KEY")
-    monkeypatch.setenv("CREATIVE_LENS_THUMBNAIL_DIR", str(tmp_path / "t"))
-    assert isinstance(library.library_from_environment().images, library.LocalImageStore)
-
-
 def test_library_keeps_ads_with_different_prices_apart(lib):
     # Same template picture, different offers: the search's numeric rule keeps them apart.
     lib.save_search("skincare", "IN", [result("a", "ffff000000000000", crops=["ffff0000ffff0000"],
@@ -221,3 +162,149 @@ def test_category_counts_can_follow_the_design_led_switch(lib):
 
     assert lib.categories(now=T0)[0]["active"] == 2
     assert lib.categories(design_led_only=True, now=T0)[0]["active"] == 1
+
+
+# --- the team's Supabase library (through a fake of Supabase's web API) ---------
+
+class FakeResponse:
+    def __init__(self, status, body=None, text=""):
+        self.status_code, self._body, self.text = status, body, text or json.dumps(body)
+
+    def json(self):
+        return self._body
+
+
+class FakeSupabase:
+    """Just enough of Supabase's login, table and storage endpoints."""
+
+    BASE = "https://abc.supabase.co"
+
+    def __init__(self, storage_status=200):
+        self.password, self.storage_status = "right", storage_status
+        self.rows, self.files, self.logins, self.calls = [], {}, 0, []
+
+    def _authorized(self, headers):
+        assert headers["apikey"] == "sb_publishable_x"
+        return headers.get("Authorization") == "Bearer user-token"
+
+    def post(self, url, params=None, json=None, data=None, headers=None, timeout=None):
+        self.calls.append(("POST", url))
+        if url == f"{self.BASE}/auth/v1/token":
+            assert params == {"grant_type": "password"}
+            if json["password"] != self.password:
+                return FakeResponse(400, {"error": "invalid_grant"})
+            self.logins += 1
+            return FakeResponse(200, {"access_token": "user-token", "expires_in": 3600})
+        assert self._authorized(headers)
+        if url.startswith(f"{self.BASE}/storage/v1/object/thumbnails/"):
+            key = url.rsplit("/", 1)[1]
+            if key in self.files:
+                return FakeResponse(400, text='{"error":"Duplicate","message":"The resource already exists"}')
+            if self.storage_status >= 400:
+                return FakeResponse(self.storage_status, text="denied")
+            self.files[key] = data
+            return FakeResponse(200, {"Key": key})
+        assert url == f"{self.BASE}/rest/v1/ads"
+        row = {**json, "id": len(self.rows) + 1}
+        self.rows.append(row)
+        return FakeResponse(201, [row])
+
+    def get(self, url, params=None, headers=None, timeout=None):
+        assert url == f"{self.BASE}/rest/v1/ads" and self._authorized(headers)
+        fields = params["select"].split(",")
+        found = [r for r in self.rows if r["category_key"] == params["category_key"][3:]
+                 and r["country"] == params["country"][3:]]
+        page = found[params["offset"]:params["offset"] + params["limit"]]
+        return FakeResponse(200, [{f: r[f] for f in fields} for r in page])
+
+    def patch(self, url, params=None, json=None, headers=None, timeout=None):
+        assert self._authorized(headers)
+        row = next(r for r in self.rows if r["id"] == int(params["id"][3:]))
+        row.update(json)
+        return FakeResponse(204, None, text="")
+
+
+@pytest.fixture
+def supa():
+    return FakeSupabase()
+
+
+def supabase_library(fake, password="right"):
+    return library.SupabaseLibrary(FakeSupabase.BASE, "sb_publishable_x", "collector@team.test", password,
+                                   session=fake)
+
+
+def test_supabase_library_adds_ads_and_pictures(supa):
+    lib = supabase_library(supa)
+
+    counts = lib.save_search("Skincare", "IN", [result("a", "ffff000000000000"), result("b", "0000ffff00000000")],
+                             {"a": b"jpeg-a"}, now=T0)
+
+    assert counts == {"new": 2, "seen_again": 0}
+    first = supa.rows[0]
+    assert first["category"] == "Skincare" and first["category_key"] == "skincare"
+    assert first["scores"]["clip_design_score"] == 0.6 and first["details"]["brand"] == "Dot & Key"
+    assert first["first_seen_at"] == T0.replace(tzinfo=timezone.utc).isoformat()
+    assert first["thumbnail_key"] == "a.jpg" and supa.files == {"a.jpg": b"jpeg-a"}
+    assert supa.rows[1]["thumbnail_key"] is None
+    assert lib.images.url_for("a.jpg") == f"{FakeSupabase.BASE}/storage/v1/object/public/thumbnails/a.jpg"
+    assert supa.logins == 1  # one sign-in serves the whole search
+
+
+def test_supabase_library_marks_ads_seen_again(supa):
+    lib = supabase_library(supa)
+    lib.save_search("skincare", "IN", [result("a", "ffff000000000000")], {}, now=T0)
+    later = T0 + timedelta(days=2)
+
+    counts = lib.save_search("skincare", "IN", [result("a2", "ffff000000000000")], {"a2": b"pic"}, now=later)
+
+    assert counts == {"new": 0, "seen_again": 1}
+    [row] = supa.rows
+    assert row["times_seen"] == 2 and row["last_seen_at"] == later.replace(tzinfo=timezone.utc).isoformat()
+    assert row["image_url"] == "https://img.example/a2.jpg" and row["thumbnail_key"] == "a2.jpg"
+
+
+def test_supabase_library_reads_more_than_one_page(supa, monkeypatch):
+    monkeypatch.setattr(library._SupabaseWriter, "PAGE", 2)
+    lib = supabase_library(supa)
+    hashes = ["ffff000000000000", "0000ffff00000000", "00000000ffff0000", "000000000000ffff", "f0f0f0f0f0f0f0f0"]
+    lib.save_search("skincare", "IN", [result(str(n), h) for n, h in enumerate(hashes)], {}, now=T0)
+
+    counts = lib.save_search("skincare", "IN", [result("again", hashes[-1])], {}, now=T0)
+
+    assert counts == {"new": 0, "seen_again": 1}  # found on the third page
+
+
+def test_supabase_picture_already_uploaded_is_fine(supa):
+    supa.files["a.jpg"] = b"from an interrupted save"
+    lib = supabase_library(supa)
+
+    lib.save_search("skincare", "IN", [result("a", "ffff000000000000")], {"a": b"new"}, now=T0)
+
+    assert supa.rows[0]["thumbnail_key"] == "a.jpg"
+
+
+def test_supabase_failed_picture_upload_keeps_the_ad():
+    supa = FakeSupabase(storage_status=403)
+
+    supabase_library(supa).save_search("skincare", "IN", [result("a", "ffff000000000000")], {"a": b"x"}, now=T0)
+
+    assert len(supa.rows) == 1 and supa.rows[0]["thumbnail_key"] is None
+
+
+def test_supabase_wrong_password_is_explained():
+    lib = supabase_library(FakeSupabase(), password="wrong")
+
+    with pytest.raises(library.SupabaseError, match="Check the collector email and password"):
+        lib.save_search("skincare", "IN", [result("a", "ffff000000000000")], {}, now=T0)
+
+
+def test_environment_picks_supabase_only_when_fully_configured(monkeypatch, tmp_path):
+    monkeypatch.setenv("CREATIVE_LENS_DATABASE_URL", f"sqlite:///{tmp_path / 'env.db'}")
+    monkeypatch.setenv("CREATIVE_LENS_THUMBNAIL_DIR", str(tmp_path / "t"))
+    for name in library.SUPABASE_SETTINGS:
+        monkeypatch.setenv(name, "x")
+    assert isinstance(library.library_from_environment(), library.SupabaseLibrary)
+
+    monkeypatch.delenv("CREATIVE_LENS_COLLECTOR_PASSWORD")
+    assert isinstance(library.library_from_environment(), library.Library)

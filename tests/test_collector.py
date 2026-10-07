@@ -301,3 +301,21 @@ def test_default_service_is_the_laptop_unless_a_url_is_set(monkeypatch):
 
     monkeypatch.setenv("CREATIVE_LENS_API_URL", "https://api.example")
     assert isinstance(collector.default_service(), collector.AnalysisService)
+
+
+def test_settings_file_is_read_without_overriding_the_environment(tmp_path, monkeypatch):
+    settings = tmp_path / ".env"
+    settings.write_text("# comment\nSUPABASE_URL=https://abc.supabase.co\nEMPTY=\n"
+                        "CREATIVE_LENS_COLLECTOR_EMAIL=\"c@team.test\"\nALREADY_SET=from-file\n", encoding="utf-8")
+    for name in ("SUPABASE_URL", "CREATIVE_LENS_COLLECTOR_EMAIL", "EMPTY"):
+        monkeypatch.setenv(name, "x")  # so monkeypatch restores whatever load_settings sets
+        monkeypatch.delenv(name)
+    monkeypatch.setenv("ALREADY_SET", "from-env")
+
+    names = collector.load_settings(settings)
+
+    assert names == ["SUPABASE_URL", "CREATIVE_LENS_COLLECTOR_EMAIL", "ALREADY_SET"]
+    assert collector.os.environ["SUPABASE_URL"] == "https://abc.supabase.co"
+    assert collector.os.environ["CREATIVE_LENS_COLLECTOR_EMAIL"] == "c@team.test"
+    assert collector.os.environ["ALREADY_SET"] == "from-env"
+    assert collector.load_settings(tmp_path / "missing.env") == []
