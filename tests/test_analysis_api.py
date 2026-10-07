@@ -73,7 +73,7 @@ def test_home_page_is_the_gallery(api, monkeypatch):
 
 
 def test_health(api):
-    assert api.get("/health").get_json() == {"status": "ok", "models_loaded": False}
+    assert api.get("/health").get_json() == {"status": "ok", "app": "creative-lens", "models_loaded": False}
 
 
 @pytest.mark.parametrize("body, message", [
@@ -332,3 +332,69 @@ def test_library_can_be_browsed_without_the_key(api, monkeypatch):
 
 def test_unknown_thumbnail_is_404(api):
     assert api.get("/thumbnails/nope.jpg").status_code == 404
+
+
+# --- the gallery's search bar (only on the laptop app) ------------------------
+
+def test_search_is_off_unless_the_laptop_app_turns_it_on(api, monkeypatch):
+    monkeypatch.delenv("CREATIVE_LENS_LOCAL_SEARCH", raising=False)
+    monkeypatch.setattr(analysis_api, "_search", None)
+
+    assert api.get("/search/status").get_json() == {"enabled": False}
+    assert api.post("/search", json={"category": "skincare"}).status_code == 404
+
+
+@pytest.fixture
+def searching(api, monkeypatch):
+    import search_runner
+    started = []
+
+    class FakeRunner:
+        running = False
+        events = search_runner.queue.Queue()
+
+        def start(self, category, country):
+            started.append((category, country))
+            self.running = True
+
+        def stop(self):
+            self.running = False
+
+    monkeypatch.setenv("CREATIVE_LENS_LOCAL_SEARCH", "1")
+    monkeypatch.setattr(analysis_api, "_search", search_runner.LocalSearch(FakeRunner()))
+    api.started = started
+    return api
+
+
+def test_starting_a_search_from_the_page(searching):
+    res = searching.post("/search", json={"category": "  skin   care ", "country": "in"})
+
+    assert res.status_code == 202
+    assert searching.started == [("skin care", "IN")]
+    status = searching.get("/search/status").get_json()
+    assert status["enabled"] and status["state"] == "running" and status["category"] == "skin care"
+
+
+@pytest.mark.parametrize("body, message", [
+    ({"category": "   "}, "Type what to search for first."),
+    ({"category": "x" * 101}, "too long"),
+    ({"category": "skincare", "country": "IND"}, "two-letter code"),
+])
+def test_bad_searches_are_explained(searching, body, message):
+    res = searching.post("/search", json=body)
+    assert res.status_code == 400 and message in res.get_json()["error"]
+    assert searching.started == []
+
+
+def test_a_second_search_waits_for_the_first(searching):
+    searching.post("/search", json={"category": "skincare"})
+
+    res = searching.post("/search", json={"category": "food"})
+
+    assert res.status_code == 409 and "skincare" in res.get_json()["error"]
+
+
+def test_status_checks_count_as_the_page_being_open(searching, monkeypatch):
+    monkeypatch.setattr(analysis_api, "last_page_contact", 0)
+    searching.get("/search/status")
+    assert analysis_api.last_page_contact > 0

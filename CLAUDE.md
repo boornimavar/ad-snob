@@ -28,10 +28,13 @@ it only returns political/social-issue ads.
    as the `ads` table. Packets are only a delivery size, never a cap on ads.
    The library then matches ads against earlier searches (same image hash
    or crop pHash <= 6), without SIFT.
-2. **Laptop collector** (in progress): `collector_app.py` (tkinter window:
-   Collect / Stop / Open results) around `collector.py`, which searches Meta
-   via `meta_collection.py` (no torch/CLIP), sends ads to the API as one job,
-   and saves a preview page + JSON in `collector_results/`. Still to do: a
+2. **Laptop app** (in progress): `demo.py` (Desktop shortcut, pythonw) runs
+   `analysis_api` locally on port 8050 and opens `gallery.html`, whose search
+   bar (`/search`, `/search/status`, `/search/stop`; only when
+   `CREATIVE_LENS_LOCAL_SEARCH=1`) runs `collector.collect` in the background
+   via `search_runner.py`. The user found the separate Tk window ugly, so it
+   was removed (2026-10-07). The app exits 15 min after the page stops
+   polling. `collector.py` stays as the command-line version. Still to do: a
    single .exe (PyInstaller).
 3. **Free hosting** (in progress, Option A): `library.py` has the matching
    rules once (`_LibraryRules`) and two stores: `Library` (SQLAlchemy;

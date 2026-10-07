@@ -74,57 +74,18 @@ of each picture, since Meta's links expire). Browse it with
 By default the library is `library.db` and `thumbnails/` next to the code;
 set `CREATIVE_LENS_DATABASE_URL` to use a hosted database.
 
-## One-click demo (everything on one laptop)
+## Using it (everything on one laptop)
 
 Double-click the **Creative Lens** shortcut on the Desktop (it runs
-`.venv\Scripts\pythonw.exe demo.py`). The Collector window opens and the
-gallery opens in the browser. Searches are scored on the laptop and saved to
-the local library (`library.db`, `thumbnails/`); **Open results** jumps to
-that category in the gallery. Results last a day: ads no search has found
-in the last 24 hours are deleted with their pictures. Log: `demo.log`.
+`.venv\Scripts\pythonw.exe demo.py`). After a few seconds the page opens in
+the browser. Type a category in the search bar at the top and click
+**Collect**: the search runs on this laptop (a few minutes), with progress
+shown under the bar, and the page then jumps to that category's ads, best
+first. Results last a day: ads no search has found in the last 24 hours are
+deleted with their pictures. The app stops by itself 15 minutes after the
+page is closed. Log: `demo.log`.
 
-## Laptop collector (Step 2)
-
-With the analysis API running (above), open the collector window:
-
-```bash
-python collector_app.py
-```
-
-Type a category, click **Collect**, and when it's done click **Open
-results** for a gallery of the design-led ads, best first. (Command-line
-version: `python collector.py skincare`.)
-
-It searches Meta from this laptop, sends the ads to the API, and shows how
-many were collected, unique, and design-led. Results are saved in
-`collector_results/` (a preview page and the full JSON) until the shared
-library exists. Use `--api` (or
-`CREATIVE_LENS_API_URL`) for a service that isn't on this laptop. The
-collector needs only `requirements-collector.txt` plus `meta_ads_collector`
-1.4.0, not the AI libraries.
-
-## Going online (free: Supabase + a Hugging Face Static Space)
-
-Hugging Face's free plan only runs static pages, so the scoring happens on
-the laptops: the Collector searches Meta, scores the ads, and saves them to
-the team's Supabase project. The gallery is a static page that reads it.
-
-1. **Supabase, once:** run `supabase_setup.sql` in the SQL Editor, create a
-   public `thumbnails` bucket, add a "collector" user (Authentication →
-   Users), and turn off new sign-ups. The collector user can add and update
-   ads but never delete them; anyone can read.
-2. **Each laptop:** fill in the private `.env` next to the Collector
-   (`SUPABASE_URL`, `SUPABASE_PUBLISHABLE_KEY`,
-   `CREATIVE_LENS_COLLECTOR_EMAIL`, `CREATIVE_LENS_COLLECTOR_PASSWORD`).
-3. **Gallery:** create a free Static Space, then:
-
-```bash
-.venv\Scripts\hf auth login
-.venv\Scripts\python.exe deploy_space.py YOUR-USERNAME/creative-lens
-```
-
-`analysis_api.py` still runs the same scoring as a local web service
-(`python analysis_api.py`) for testing.
+Command-line search (no page): `python collector.py skincare`.
 
 ## Notes
 
