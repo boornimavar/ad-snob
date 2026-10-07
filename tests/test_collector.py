@@ -253,3 +253,51 @@ def test_save_results_writes_json_and_preview(service, tmp_path):
 
     assert json.loads(json_path.read_text(encoding="utf-8"))["summary"]["design_led"] == 1
     assert "red.jpg" in preview_path.read_text(encoding="utf-8")
+
+
+# --- scoring on the laptop (no server) -------------------------------------------
+
+@pytest.fixture
+def local(service, fresh_library):
+    """LocalAnalysis with the same faked scoring as the `service` fixture."""
+    return collector.LocalAnalysis(library=fresh_library)
+
+
+def test_laptop_scoring_gives_the_same_results_and_saves_to_the_library(local, fresh_library):
+    records = [record(0, "red"), record(1, "blue"), record(2, "red")]
+
+    final = collector.collect("skincare", "IN", local, on_status=lambda _m: None, search=FakeSearch(records))
+
+    assert final["summary"] == {"received": 3, "analyzed": 3, "failed": 0, "unique": 2, "duplicates": 1,
+                                "design_led": 2}
+    assert final["library"] == {"new": 2, "seen_again": 0}
+    assert len(fresh_library.browse("skincare", "IN", design_led_only=False)) == 2
+
+
+def test_laptop_scoring_keeps_results_when_the_library_fails(local, monkeypatch, fresh_library):
+    def broken(*args, **kwargs):
+        raise ConnectionError("no internet")
+
+    monkeypatch.setattr(fresh_library, "save_search", broken)
+
+    final = collector.collect("skincare", "IN", local, on_status=lambda _m: None, search=FakeSearch([record(0)]))
+
+    assert final["summary"]["analyzed"] == 1
+    assert "could not be saved to the team library" in final["library_error"]
+    assert "library" not in final
+
+
+def test_laptop_scoring_rejects_a_repeated_ad(local):
+    job = local.start_job("skincare", "IN")
+    local.send_packet(job, [{"id": "a", "image_url": "https://img.example/red.jpg"}])
+
+    with pytest.raises(collector.CollectorError, match="already sent"):
+        local.send_packet(job, [{"id": "a", "image_url": "https://img.example/red.jpg"}])
+
+
+def test_default_service_is_the_laptop_unless_a_url_is_set(monkeypatch):
+    monkeypatch.delenv("CREATIVE_LENS_API_URL", raising=False)
+    assert isinstance(collector.default_service(), collector.LocalAnalysis)
+
+    monkeypatch.setenv("CREATIVE_LENS_API_URL", "https://api.example")
+    assert isinstance(collector.default_service(), collector.AnalysisService)

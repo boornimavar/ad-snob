@@ -12,6 +12,15 @@ data steps in the final product. Explain things plainly, one step at a time.
 - So: **collect on teammates' laptops**, **analyze + show online**.
 
 ## Plan
+**2026-10-07: switched to "Option A".** Hugging Face now charges for Docker
+and Gradio Spaces (only Static Spaces are free), and the user won't pay or
+put a card on file. So the laptop collector also does the scoring
+(`collector.LocalAnalysis` runs the same `analysis_api` job functions
+in-process) and saves straight to Supabase; the gallery becomes a static
+page reading Supabase. The Flask service stays for local use and tests.
+Meta's official Ad Library API can't replace the collector: outside the EU
+it only returns political/social-issue ads.
+
 1. **Analysis API** (built, local): `analysis_api.py`. One search = one job:
    `POST /jobs`, then packets of up to 50 ads (`image_url` or `image_base64`)
    to `/jobs/<id>/ads`, then `/jobs/<id>/finish` groups duplicates across the

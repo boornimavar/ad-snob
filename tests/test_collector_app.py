@@ -159,3 +159,19 @@ def test_window_stop_button(window):
 
     assert window.runner.stopped
     assert str(window.stop_button["state"]) == "disabled"
+
+
+def test_runner_creates_the_service_on_the_first_search_only():
+    made = []
+
+    def fake_collect(category, country, service, on_status, stop_check):
+        return FINAL
+
+    runner = collector_app.SearchRunner(collect=fake_collect, save=lambda final: ("a.json", Path("a.html")),
+                                        make_service=lambda: made.append(1) or "svc")
+    runner.start("skincare", "IN")
+    assert events_until_end(runner)[0] == ("status", "Getting ready...")
+    runner.start("skincare", "IN")
+    events_until_end(runner)
+
+    assert made == [1] and runner.service == "svc"

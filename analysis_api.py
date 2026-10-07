@@ -257,18 +257,68 @@ def health():
     return jsonify({"status": "ok", "models_loaded": _models_loaded})
 
 
+class JobError(Exception):
+    """A request about a job that can't be done; the message is plain language."""
+
+    def __init__(self, message, status=400):
+        super().__init__(message)
+        self.status = status
+
+
+def new_job(category="", country="IN"):
+    return {"scored": [], "ids": set(), "last_activity": time.time(),
+            "category": (category or "").strip(), "country": (country or "IN").strip().upper()}
+
+
+def add_packet_to_job(job_id, job, ads):
+    """Score one validated packet into the job and return the packet reply.
+    The caller holds _analysis_lock."""
+    repeated = [ad["id"] for ad in ads if str(ad["id"]) in job["ids"]]
+    if repeated:
+        raise JobError(f"Ad id {repeated[0]!r} was already sent in this job.")
+    if len(job["scored"]) + len(ads) > MAX_ADS_PER_JOB:
+        raise JobError(f"A job holds at most {MAX_ADS_PER_JOB} ads.")
+    _ensure_models_loaded()
+    scored = score_ads(ads)
+    job["scored"].extend(scored)
+    job["ids"].update(str(ad["id"]) for ad in ads)
+    job["last_activity"] = time.time()
+    failed = [{"id": e["ad"]["id"], "error": e["error"]} for e in scored if e["row"] is None]
+    return {"job_id": job_id, "received": len(scored), "analyzed": len(scored) - len(failed),
+            "failed": failed, "total_in_job": len(job["scored"])}
+
+
+def finish_job_results(job_id, job, library=None):
+    """Group duplicates across the whole job and, if it names a category,
+    save its unique ads to the library. Returns the finish reply."""
+    body = {"job_id": job_id, **final_results(job["scored"])}
+    if job["category"]:
+        thumbnails = {str(e["ad"]["id"]): e["thumbnail"] for e in job["scored"] if e["thumbnail"]}
+        try:
+            body["library"] = (library or get_library()).save_search(
+                job["category"], job["country"], body["results"], thumbnails)
+        except Exception as exc:  # keep the search's results even if the library is unreachable
+            print(f"[LIBRARY] Saving failed: {type(exc).__name__}: {exc}")
+            body["library_error"] = (f"The results could not be saved to the team library "
+                                     f"({type(exc).__name__}: {exc}).")
+    return body
+
+
+@app.errorhandler(JobError)
+def job_error(exc):
+    return _error(str(exc), exc.status)
+
+
 @app.route("/jobs", methods=["POST"])
 def create_job():
     """Body (optional): {"category": "...", "country": "IN"}. With a category,
     finishing the job saves its unique ads to the shared library."""
-    body = request.get_json(silent=True) or {}
-    category = str(body.get("category") or "").strip() if isinstance(body, dict) else ""
-    country = str(body.get("country") or "IN").strip().upper() if isinstance(body, dict) else "IN"
+    body = request.get_json(silent=True)
+    body = body if isinstance(body, dict) else {}
     job_id = secrets.token_urlsafe(16)
     with _jobs_lock:
         _expire_idle_jobs_locked()
-        _jobs[job_id] = {"scored": [], "ids": set(), "last_activity": time.time(),
-                         "category": category, "country": country}
+        _jobs[job_id] = new_job(str(body.get("category") or ""), str(body.get("country") or "IN"))
     return jsonify({"job_id": job_id}), 201
 
 
@@ -281,26 +331,7 @@ def add_packet(job_id):
         job = _get_job(job_id)
         if job is None:
             return _error(UNKNOWN_JOB, 404)
-        repeated = [ad["id"] for ad in ads if str(ad["id"]) in job["ids"]]
-        if repeated:
-            return _error(f"Ad id {repeated[0]!r} was already sent in this job.")
-        if len(job["scored"]) + len(ads) > MAX_ADS_PER_JOB:
-            return _error(f"A job holds at most {MAX_ADS_PER_JOB} ads.")
-
-        _ensure_models_loaded()
-        scored = score_ads(ads)
-        job["scored"].extend(scored)
-        job["ids"].update(str(ad["id"]) for ad in ads)
-        job["last_activity"] = time.time()
-
-    failed = [{"id": e["ad"]["id"], "error": e["error"]} for e in scored if e["row"] is None]
-    return jsonify({
-        "job_id": job_id,
-        "received": len(scored),
-        "analyzed": len(scored) - len(failed),
-        "failed": failed,
-        "total_in_job": len(job["scored"]),
-    })
+        return jsonify(add_packet_to_job(job_id, job, ads))
 
 
 @app.route("/jobs/<job_id>/finish", methods=["POST"])
@@ -311,11 +342,7 @@ def finish_job(job_id):
             job = _jobs.pop(job_id, None)
         if job is None:
             return _error(UNKNOWN_JOB, 404)
-        body = {"job_id": job_id, **final_results(job["scored"])}
-        if job["category"]:
-            thumbnails = {str(e["ad"]["id"]): e["thumbnail"] for e in job["scored"] if e["thumbnail"]}
-            body["library"] = get_library().save_search(job["category"], job["country"], body["results"], thumbnails)
-        return jsonify(body)
+        return jsonify(finish_job_results(job_id, job))
 
 
 @app.route("/analyze", methods=["POST"])

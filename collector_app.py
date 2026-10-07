@@ -3,7 +3,6 @@
 Type what to search for, click Collect, watch progress, then open the
 results. Run with:  python collector_app.py
 """
-import os
 import queue
 import threading
 import tkinter as tk
@@ -21,8 +20,10 @@ class SearchRunner:
     Kept free of tkinter so it can be tested without a window.
     """
 
-    def __init__(self, service, collect=collector.collect, save=collector.save_results):
-        self.service = service
+    def __init__(self, service=None, collect=collector.collect, save=collector.save_results,
+                 make_service=collector.default_service):
+        self.service = service  # created on the first search if not given, off the window's thread
+        self._make_service = make_service
         self.events = queue.Queue()
         self._collect = collect
         self._save = save
@@ -43,6 +44,9 @@ class SearchRunner:
 
     def _run(self, category, country):
         try:
+            if self.service is None:
+                self.events.put(("status", "Getting ready..."))
+                self.service = self._make_service()
             final = self._collect(category, country, self.service,
                                   on_status=lambda text: self.events.put(("status", text)),
                                   stop_check=self._stop.is_set)
@@ -153,6 +157,9 @@ class CollectorWindow:
             if final.get("library"):
                 self.write(f"Team library: {final['library']['new']} new ads added, "
                            f"{final['library']['seen_again']} were already there (marked as still active).")
+            if final.get("library_error"):
+                self.write(f"Team library: NOT saved. {final['library_error']} "
+                           "Your results are still saved on this laptop.")
             self.write("Click Open results to see them.")
             self.open_button.configure(state="normal")
             self.set_running(False)
@@ -163,12 +170,8 @@ class CollectorWindow:
 
 
 def main():
-    service = collector.AnalysisService(
-        os.environ.get("CREATIVE_LENS_API_URL", collector.DEFAULT_API_URL),
-        os.environ.get("CREATIVE_LENS_API_KEY"),
-    )
     root = tk.Tk()
-    CollectorWindow(root, SearchRunner(service))
+    CollectorWindow(root, SearchRunner())
     root.mainloop()
 
 

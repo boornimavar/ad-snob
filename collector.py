@@ -17,6 +17,7 @@ import argparse
 import html
 import json
 import os
+import secrets
 import sys
 import time
 from pathlib import Path
@@ -94,6 +95,46 @@ class AnalysisService:
         return self._post(f"/jobs/{job_id}/finish", timeout=PACKET_TIMEOUT_SECONDS)
 
 
+class LocalAnalysis:
+    """Scores on this laptop with exactly the code the analysis service runs,
+    then saves to the team library - no server needed. The AI model is loaded
+    on the first search (about a minute)."""
+
+    def __init__(self, library=None):
+        import analysis_api  # heavy (torch, CLIP), so only loaded when scoring locally
+        self._api = analysis_api
+        self._library = library
+        self._jobs = {}
+
+    def start_job(self, category, country):
+        job_id = secrets.token_urlsafe(8)
+        self._jobs[job_id] = self._api.new_job(category, country)
+        return job_id
+
+    def send_packet(self, job_id, ads):
+        _ads, error = self._api._validate_packet({"ads": ads})
+        if error:
+            raise CollectorError(error)
+        try:
+            with self._api._analysis_lock:
+                return self._api.add_packet_to_job(job_id, self._jobs[job_id], ads)
+        except self._api.JobError as exc:
+            raise CollectorError(str(exc)) from exc
+
+    def finish(self, job_id):
+        job = self._jobs.pop(job_id)
+        with self._api._analysis_lock:
+            return self._api.finish_job_results(job_id, job, self._library)
+
+
+def default_service():
+    """Score on this laptop, unless CREATIVE_LENS_API_URL points at a service."""
+    url = os.environ.get("CREATIVE_LENS_API_URL")
+    if url:
+        return AnalysisService(url, os.environ.get("CREATIVE_LENS_API_KEY"))
+    return LocalAnalysis()
+
+
 def ads_for_service(records, category, country):
     """Turn Meta records into the service's ad format, one entry per image."""
     ads, seen = [], set()
@@ -141,7 +182,8 @@ def collect(category, country, service, on_status=print, search=search_ads_broad
         raise CollectorError(NO_ADS_MESSAGE)
 
     ads = ads_for_service(records, category, country)
-    on_status(f"Collected {len(ads)} image ads. Sending them for analysis in packets of {PACKET_SIZE}...")
+    on_status(f"Collected {len(ads)} image ads. Scoring them in batches of {PACKET_SIZE} "
+              "(the first search also loads the AI model, about a minute)...")
 
     job_id = service.start_job(category, country)
     for start in range(0, len(ads), PACKET_SIZE):
@@ -214,11 +256,12 @@ def main(argv=None):
     parser = argparse.ArgumentParser(description="Search Meta for image ads and send them to Creative Lens.")
     parser.add_argument("category", help='what to search for, e.g. "skincare"')
     parser.add_argument("--country", default="IN", help="two-letter country code (default IN)")
-    parser.add_argument("--api", default=os.environ.get("CREATIVE_LENS_API_URL", DEFAULT_API_URL),
-                        help=f"analysis service address (default {DEFAULT_API_URL})")
+    parser.add_argument("--api", default=os.environ.get("CREATIVE_LENS_API_URL"),
+                        help=f"use an analysis service (e.g. {DEFAULT_API_URL}) instead of scoring on this laptop")
     args = parser.parse_args(argv)
 
-    service = AnalysisService(args.api, os.environ.get("CREATIVE_LENS_API_KEY"))
+    service = (AnalysisService(args.api, os.environ.get("CREATIVE_LENS_API_KEY")) if args.api
+               else LocalAnalysis())
     try:
         final = collect(args.category.strip(), args.country.strip().upper(), service)
     except CollectorError as exc:
@@ -239,6 +282,8 @@ def main(argv=None):
     if final.get("library"):
         print(f"  Team library:            {final['library']['new']} new, "
               f"{final['library']['seen_again']} already there (marked as still active)")
+    if final.get("library_error"):
+        print(f"  Team library:            NOT saved. {final['library_error']}")
     json_path, preview_path = save_results(final)
     print(f"Preview of the design-led ads: {preview_path}")
     print(f"Full results: {json_path}")
