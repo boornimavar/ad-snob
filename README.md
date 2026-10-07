@@ -77,15 +77,15 @@ set `CREATIVE_LENS_DATABASE_URL` to use a hosted database.
 ## Using it (everything on one laptop)
 
 Double-click the **Creative Lens** shortcut on the Desktop (it runs
-`.venv\Scripts\pythonw.exe demo.py`). After a few seconds the page opens in
-the browser. Type a category in the search bar at the top and click
-**Collect**: the search runs on this laptop (a few minutes), with progress
-shown under the bar, and the page then jumps to that category's ads, best
-first. Results last a day: ads no search has found in the last 24 hours are
-deleted with their pictures. The app stops by itself 15 minutes after the
-page is closed. Log: `demo.log`.
+`.venv\Scripts\pythonw.exe demo.py`). After a few seconds the dashboard
+opens in the browser. Pick an industry or type a search and the search runs
+on this laptop, with live progress; the ads appear best first. Results last
+a day: anything no search has found in the last 24 hours is deleted, and a
+category whose results expired is searched fresh. Saved ads are kept. The
+app stops by itself 15 minutes after the page is closed. Log: `demo.log`.
 
-Command-line search (no page): `python collector.py skincare`.
+(The same dashboard without the shortcut: `python dashboard_server_temporary.py`,
+then http://127.0.0.1:5000. Command-line search: `python collector.py skincare`.)
 
 ## Notes
 

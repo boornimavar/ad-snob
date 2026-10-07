@@ -31,23 +31,6 @@ h1{font:500 clamp(24px,3vw,34px)/1.15 var(--serif);margin:0}
 .controls{display:flex;flex-wrap:wrap;gap:10px;align-items:center}
 .toggle{display:flex;gap:8px;align-items:center;font-size:13px;color:var(--muted)}
 .toggle input{accent-color:var(--lime);width:16px;height:16px}
-.search{display:flex;flex-wrap:wrap;gap:8px;margin-bottom:10px}
-.search input{background:var(--panel);border:1px solid var(--line);border-radius:10px;color:var(--ink);font:inherit;padding:10px 12px}
-.search input:focus{outline:2px solid #4b5a32;border-color:#4b5a32}
-#q{flex:1 1 260px;min-width:0}
-#country{width:64px;text-transform:uppercase;text-align:center}
-.search button{border:0;border-radius:10px;padding:10px 18px;font-weight:600}
-#go{background:var(--lime);color:#15170f}
-#go:disabled{opacity:.45;cursor:default}
-#stop{background:var(--panel-2);color:var(--ink);border:1px solid var(--line)}
-.progress{background:var(--panel);border:1px solid var(--line);border-radius:12px;padding:12px 14px;margin-bottom:18px}
-.bar{height:6px;border-radius:3px;background:var(--panel-2);overflow:hidden;margin-bottom:8px}
-.bar span{display:block;height:100%;width:30%;background:var(--lime);border-radius:3px;transition:width .4s}
-.bar.busy span{animation:busy 1.4s ease-in-out infinite}
-@keyframes busy{0%{margin-left:-30%}100%{margin-left:100%}}
-.status-line{font-size:13px;color:var(--muted)}
-.status-line.bad{color:#ff8278}
-.status-line.good{color:var(--ink)}
 .grid{columns:4 220px;column-gap:14px}
 .card{display:inline-block;width:100%;margin:0 0 14px;break-inside:avoid;background:var(--panel);border:1px solid #34323e;
   border-radius:12px;overflow:hidden;text-align:left;padding:0}
@@ -91,16 +74,6 @@ dialog::backdrop{background:#000a}
     <nav class="cats" id="cats"></nav>
   </aside>
   <main>
-    <form class="search" id="search" hidden>
-      <input id="q" placeholder="Search Meta ads, e.g. skincare" autocomplete="off" aria-label="What to search for">
-      <input id="country" value="IN" maxlength="2" aria-label="Country (two letters)">
-      <button type="submit" id="go">Collect</button>
-      <button type="button" id="stop" hidden>Stop</button>
-    </form>
-    <div class="progress" id="progress" hidden>
-      <div class="bar" id="bar"><span></span></div>
-      <div class="status-line" id="status-line"></div>
-    </div>
     <div class="head">
       <div>
         <h1 id="title">All categories</h1>
@@ -284,82 +257,10 @@ async function refresh() {
 }
 
 document.getElementById("design-led").onchange = e => { state.designLed = e.target.checked; refresh(); };
-
-// --- searching (only when the page is served by the app on this laptop) ---
-const search = {pollTimer: null, lastFinished: undefined, watching: false};
-
-function showProgress(s) {
-  const panel = document.getElementById("progress"), bar = document.getElementById("bar"),
-        line = document.getElementById("status-line");
-  const go = document.getElementById("go"), stop = document.getElementById("stop");
-  const running = s.state === "running";
-  go.disabled = running;
-  stop.hidden = !running;
-  if (s.state === "idle") { panel.hidden = true; return; }
-  panel.hidden = false;
-  line.className = "status-line";
-  bar.hidden = !running;
-  if (running) {
-    const last = s.lines.at(-1) || "Starting...";
-    const m = /analyzed (\d+)\/(\d+)/.exec(last);
-    bar.classList.toggle("busy", !m);
-    bar.firstElementChild.style.width = m ? `${Math.round(100 * m[1] / m[2])}%` : "30%";
-    line.textContent = `Searching "${s.category}" (${s.country}): ${last.trim()}`;
-  } else if (s.state === "done") {
-    const n = s.summary || {};
-    line.className = "status-line good";
-    line.textContent = `"${s.category}" done: ${n.received} images collected, ${n.unique} unique, ` +
-      `${n.design_led} design-led.` + (s.warning ? ` ${s.warning}` : "") + (s.error ? ` ${s.error}` : "");
-  } else if (s.state === "stopped") {
-    line.textContent = `Search for "${s.category}" stopped.`;
-  } else {
-    line.className = "status-line bad";
-    line.textContent = `Search for "${s.category}" failed: ${s.error}`;
-  }
-}
-
-async function pollSearch() {
-  clearTimeout(search.pollTimer);
-  let s;
-  try { s = await getJSON("search/status"); } catch { search.pollTimer = setTimeout(pollSearch, 20000); return; }
-  if (!s.enabled) return;
-  document.getElementById("search").hidden = false;
-  if (search.lastFinished === undefined) search.lastFinished = s.finished_at;  // don't jump on page load
-  showProgress(s);
-  if (s.finished_at && s.finished_at !== search.lastFinished) {
-    search.lastFinished = s.finished_at;
-    if (s.state === "done" && search.watching) choose(s.category, s.country);
-    else refresh();
-    search.watching = false;
-  }
-  search.pollTimer = setTimeout(pollSearch, s.state === "running" ? 1500 : 20000);
-}
-
-document.getElementById("search").onsubmit = async e => {
-  e.preventDefault();
-  const category = document.getElementById("q").value.trim();
-  const country = document.getElementById("country").value.trim().toUpperCase() || "IN";
-  if (!category) { document.getElementById("q").focus(); return; }
-  const res = await fetch("search", {method: "POST", headers: {"Content-Type": "application/json"},
-                                     body: JSON.stringify({category, country})});
-  const s = await res.json();
-  if (!res.ok) {
-    showProgress({state: "failed", category, error: s.error});
-    return;
-  }
-  search.watching = true;
-  showProgress(s);
-  search.pollTimer = setTimeout(pollSearch, 1000);
-};
-document.getElementById("stop").onclick = async () => {
-  await fetch("search/stop", {method: "POST", headers: {"Content-Type": "application/json"}, body: "{}"});
-  pollSearch();
-};
 document.getElementById("dialog").addEventListener("click", e => { if (e.target.id === "dialog") e.target.close(); });
 window.addEventListener("hashchange", () => { readHash(); refresh(); });  // pasted links, Back button
 readHash();
 refresh();
-if (!SUPABASE) pollSearch();
 </script>
 </body>
 </html>

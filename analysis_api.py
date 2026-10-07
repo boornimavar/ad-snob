@@ -72,26 +72,6 @@ def get_library():
     return _library
 
 
-_search = None
-_search_lock = threading.Lock()
-last_page_contact = time.time()  # demo.py stops the app once the page has been closed a while
-
-
-def get_search():
-    """The gallery's search bar. Only when CREATIVE_LENS_LOCAL_SEARCH=1 (set by
-    demo.py), i.e. when this server runs on the laptop that searches Meta."""
-    global _search
-    if os.environ.get("CREATIVE_LENS_LOCAL_SEARCH") != "1":
-        return None
-    with _search_lock:
-        if _search is None:
-            import collector
-            import search_runner
-            _search = search_runner.LocalSearch(search_runner.SearchRunner(
-                make_service=lambda: collector.LocalAnalysis(library=get_library())))
-        return _search
-
-
 # In memory only: a job lives for the few minutes one search takes. If the
 # server restarts mid-search, the collector gets "unknown job" and starts over.
 _jobs = {}
@@ -274,50 +254,7 @@ def index():
 
 @app.route("/health")
 def health():
-    return jsonify({"status": "ok", "app": "creative-lens", "models_loaded": _models_loaded})
-
-
-@app.route("/search/status")
-def search_status():
-    global last_page_contact
-    last_page_contact = time.time()
-    search = get_search()
-    if search is None:
-        return jsonify({"enabled": False})
-    return jsonify({"enabled": True, **search.snapshot()})
-
-
-@app.route("/search", methods=["POST"])
-def start_search():
-    """Body: {"category": "skincare", "country": "IN"}. One search at a time."""
-    import search_runner
-    search = get_search()
-    if search is None:
-        return _error("Searching isn't available here.", 404)
-    body = request.get_json(silent=True)
-    body = body if isinstance(body, dict) else {}
-    category = " ".join(str(body.get("category") or "").split())
-    country = str(body.get("country") or "IN").strip().upper()
-    if not category:
-        return _error("Type what to search for first.")
-    if len(category) > 100:
-        return _error("That search is too long; use a few words.")
-    if not (len(country) == 2 and country.isalpha()):
-        return _error("Country must be a two-letter code, like IN.")
-    try:
-        search.start(category, country)
-    except search_runner.SearchBusy as exc:
-        return _error(str(exc), 409)
-    return jsonify({"enabled": True, **search.snapshot()}), 202
-
-
-@app.route("/search/stop", methods=["POST"])
-def stop_search():
-    search = get_search()
-    if search is None:
-        return _error("Searching isn't available here.", 404)
-    search.stop()
-    return jsonify({"enabled": True, **search.snapshot()})
+    return jsonify({"status": "ok", "models_loaded": _models_loaded})
 
 
 class JobError(Exception):

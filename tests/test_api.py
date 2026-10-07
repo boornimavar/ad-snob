@@ -267,3 +267,70 @@ def test_old_saved_table_is_migrated_without_losing_bookmarks(client, app_env):
     snapshot = conn.execute("SELECT creative_json FROM saved").fetchone()[0]
     conn.close()
     assert snapshot  # the missing snapshot was backfilled
+
+
+# --- results last a day (decided 2026-10-07) -----------------------------------
+
+def test_results_older_than_a_day_are_deleted(client, app_env):
+    from datetime import datetime, timedelta
+    fmt = "%Y-%m-%d %H:%M:%S"
+    insert_rows(app_env.SESSION_DB_PATH, [make_row(image_hash="aaaa000000000001")])
+    conn = sqlite3.connect(app_env.SESSION_DB_PATH)
+    conn.execute("UPDATE ads SET last_seen_at=?", ((datetime.now() - timedelta(hours=25)).strftime(fmt),))
+    conn.commit(); conn.close()
+    insert_rows(app_env.SESSION_DB_PATH, [make_row(image_hash="aaaa000000000002")])
+
+    rows = client.get("/api/creatives").get_json()["rows"]
+
+    assert [r["image_hash"] for r in rows] == ["aaaa000000000002"]
+
+
+def test_fresh_results_are_shown_without_searching_again_after_a_restart(client, app_env, fake_pipeline):
+    # Searched before the app restarted: results are still fresh, so no new search.
+    insert_rows(app_env.SESSION_DB_PATH, [make_row(category="Skincare", country="IN")])
+
+    data = client.get(f"/api/creatives?{QUERY}").get_json()
+
+    assert fake_pipeline["calls"] == [] and data["on_demand_scraped"] is False
+    assert len(data["rows"]) == 1
+
+
+def test_a_category_can_be_searched_again_once_its_results_expire(client, app_env, fake_pipeline):
+    fake_pipeline["rows"] = [make_row(image_hash="bbbb000000000001")]
+    client.get(f"/api/creatives?{QUERY}")
+    wait_for_stage(client, QUERY, ("done",))
+    assert fake_pipeline["calls"] == ["skincare"]
+
+    with app_env._scrapes_lock:  # pretend that search happened yesterday
+        for target in app_env._searched_at:
+            app_env._searched_at[target] -= 25 * 3600
+    conn = sqlite3.connect(app_env.SESSION_DB_PATH)
+    conn.execute("UPDATE ads SET last_seen_at='2000-01-01 00:00:00'")
+    conn.commit(); conn.close()
+
+    client.get(f"/api/creatives?{QUERY}")
+    wait_for_stage(client, QUERY, ("done",))
+    assert fake_pipeline["calls"] == ["skincare", "skincare"]
+
+
+def test_a_failed_search_today_is_still_not_restarted(client, app_env, fake_pipeline):
+    fake_pipeline["behaviour"] = "fail"
+    client.get(f"/api/creatives?{QUERY}")
+    wait_for_stage(client, QUERY, ("failed",))
+
+    client.get(f"/api/creatives?{QUERY}")
+
+    assert fake_pipeline["calls"] == ["skincare"]
+
+
+def test_a_search_that_finds_nothing_explains_why(client, fake_pipeline):
+    fake_pipeline["rows"] = []
+    client.get(f"/api/creatives?{QUERY}")
+
+    status = wait_for_stage(client, QUERY, ("done",))
+
+    assert "Meta returned no image ads" in status["warning"]
+
+
+def test_health_names_the_app(client):
+    assert client.get("/api/health").get_json() == {"status": "ok", "app": "creative-lens"}

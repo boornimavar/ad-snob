@@ -82,6 +82,7 @@ def app_env():
     with server._scrapes_lock:
         server._scrapes_in_progress.clear()
         server._session_searched_targets.clear()
+        server._searched_at.clear()
     with server._progress_lock:
         server._scrape_progress.clear()
     with server._stop_events_lock:

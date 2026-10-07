@@ -19,8 +19,8 @@ def test_no_app_running_means_none():
 
 
 def test_idle_time_counts_from_the_last_page_visit_but_not_during_a_search():
-    api = SimpleNamespace(_search=None, last_page_contact=1000)
-    assert demo.idle_for(api, now=1600) == 600
+    server = SimpleNamespace(_scrapes_in_progress=set(), last_page_contact=1000)
+    assert demo.idle_for(server, now=1600) == 600
 
-    api._search = SimpleNamespace(runner=SimpleNamespace(running=True))
-    assert demo.idle_for(api, now=1600) == 0
+    server._scrapes_in_progress.add(("skincare", "IN"))
+    assert demo.idle_for(server, now=1600) == 0

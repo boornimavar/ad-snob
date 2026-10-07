@@ -25,6 +25,7 @@ from types import SimpleNamespace
 import meta_ads_collector
 from flask import Flask, jsonify, request, send_from_directory
 
+from collector import NO_ADS_MESSAGE
 from meta_collection import classify_failure
 from meta_design_scraper_session import (
     MASTER_DB_PATH, browse_master_db, BASE_DIR, create_database,
@@ -64,6 +65,13 @@ _progress_lock = threading.Lock()
 # returned zero qualifying creatives. This prevents category switching from
 # silently launching duplicate searches.
 _session_searched_targets = set()
+_searched_at = {}  # target -> when its search started; guarded by _scrapes_lock
+
+# Results last a day (decided with the user 2026-10-07): ads no search has
+# found for KEEP_HOURS are deleted, and a category whose results expired may
+# be searched again. Same rule as library.KEEP_HOURS.
+KEEP_HOURS = 24
+last_page_contact = time.time()  # demo.py stops the app once the page has been closed a while
 
 _stop_events = {}  # target -> threading.Event(), set when the user clicks Stop
 _stop_events_lock = threading.Lock()
@@ -175,6 +183,59 @@ def find_creative_by_hash(image_hash):
     return None
 
 
+def expire_old_results(now=None):
+    """Delete session results no search has found in the last KEEP_HOURS, and
+    forget day-old searches so their categories can be searched fresh.
+    A search that failed less than a day ago stays searched: failed searches
+    are only ever retried by the person (see RETRY_COOLDOWN_SECONDS)."""
+    now = now or datetime.now()
+    if SESSION_DB_PATH.exists():
+        cutoff = (now - timedelta(hours=KEEP_HOURS)).strftime("%Y-%m-%d %H:%M:%S")
+        conn = sqlite3.connect(SESSION_DB_PATH)
+        try:
+            conn.execute("DELETE FROM ads WHERE last_seen_at < ?", (cutoff,))
+            conn.commit()
+        except sqlite3.OperationalError:
+            pass
+        finally:
+            conn.close()
+    day_ago = now.timestamp() - KEEP_HOURS * 3600
+    with _scrapes_lock:
+        old = [t for t, at in _searched_at.items() if at < day_ago and t not in _scrapes_in_progress]
+        for target in old:
+            _searched_at.pop(target, None)
+            _session_searched_targets.discard(target)
+    with _progress_lock:
+        for target in old:
+            _scrape_progress.pop(target, None)
+            _failures.pop(target, None)
+            _last_activity.pop(target, None)
+
+
+def has_fresh_results(category, country):
+    """True if this category already has results from the last KEEP_HOURS
+    (e.g. searched before the app was restarted)."""
+    if not SESSION_DB_PATH.exists():
+        return False
+    key, country = normalize_target(category, country)
+    conn = sqlite3.connect(SESSION_DB_PATH)
+    try:
+        row = conn.execute(
+            "SELECT 1 FROM ads WHERE lower(trim(category)) = ? AND country = ? LIMIT 1", (key, country)
+        ).fetchone()
+    except sqlite3.OperationalError:
+        row = None
+    finally:
+        conn.close()
+    return row is not None
+
+
+def prepare_session_db():
+    """At start: keep results from the last day, delete older ones."""
+    create_database(SESSION_DB_PATH).close()
+    expire_old_results()
+
+
 def normalize_target(category, country):
     """Normalize a category/market pair for per-session cache keys."""
     return ((category or "").strip().casefold(), (country or "").strip().upper())
@@ -276,6 +337,9 @@ def run_on_demand_scrape(category, country, stop_event):
                     current.setdefault("done", 0)
                     current.setdefault("total", 0)
                     current.setdefault("collected", current.get("total", 0))
+                    if current["stage"] == "done" and not current.get("collected"):
+                        # collector 1.4.0 ends a rate-limited search quietly with 0 ads
+                        current["warning"] = NO_ADS_MESSAGE
                     if interrupted_reason:
                         current["warning"] = PARTIAL_MESSAGES[interrupted_reason[0]].format(n=current.get("collected", 0))
                     _scrape_progress[target] = current
@@ -305,6 +369,7 @@ def api_creatives():
     design_led_only = request.args.get("design_led_only", "true").lower() == "true"
 
     min_rank_score = 0.5 if design_led_only else None
+    expire_old_results()
 
     retry_requested = request.args.get("retry") == "1"
 
@@ -316,7 +381,7 @@ def api_creatives():
         with _scrapes_lock:
             if target not in _scrapes_in_progress:
                 if target not in _session_searched_targets:
-                    should_scrape = True
+                    should_scrape = not has_fresh_results(category, country)
                 elif retry_requested:
                     with _progress_lock:
                         wait = retry_wait_seconds(target)
@@ -329,6 +394,7 @@ def api_creatives():
                     _scrapes_in_progress.add(target)
                     # Mark it immediately to close the race between rapid repeated requests.
                     _session_searched_targets.add(target)
+                    _searched_at[target] = time.time()
     if should_scrape:
         stop_event = threading.Event()
         with _stop_events_lock:
@@ -406,8 +472,22 @@ def api_stop_scrape():
     return jsonify({"ok": True, "stopping": False, "note": "nothing in progress for this target"})
 
 
+@app.before_request
+def _note_page_contact():
+    global last_page_contact
+    last_page_contact = time.time()
+
+
+@app.route("/api/health")
+def api_health():
+    """Lets demo.py find a running app; the page also calls it every minute
+    while open, so the app knows not to stop."""
+    return jsonify({"status": "ok", "app": "creative-lens"})
+
+
 @app.route("/api/categories")
 def api_categories():
+    expire_old_results()
     if not SESSION_DB_PATH.exists():
         return jsonify([])
     conn = sqlite3.connect(SESSION_DB_PATH)
@@ -475,16 +555,13 @@ if __name__ == "__main__":
     print("=" * 70)
     print("CREATIVE INTELLIGENCE DASHBOARD")
     print("=" * 70)
-    # Search results are temporary: start each server session with an empty DB.
+    # Results last a day: older ones are deleted, newer ones kept across restarts.
     # Bookmarks live in saved_creatives.db and are deliberately not cleared.
-    if SESSION_DB_PATH.exists():
-        SESSION_DB_PATH.unlink()
-    conn = create_database(SESSION_DB_PATH)
-    conn.close()
+    prepare_session_db()
     print(f"Meta collector version: {COLLECTOR_VERSION}")
     if COLLECTOR_VERSION != EXPECTED_COLLECTOR_VERSION:
         print(f"  WARNING: expected {EXPECTED_COLLECTOR_VERSION}. Reinstall it from meta_ads_collector_source.zip (see README).")
-    print(f"Temporary search results: {SESSION_DB_PATH.resolve()}")
+    print(f"Search results (kept {KEEP_HOURS} hours): {SESSION_DB_PATH.resolve()}")
     print(f"Persistent bookmarks: {SAVED_DB_PATH.resolve()}")
     print("Searches stream results in live as they're found. No count to set - stop anytime, or let it run out naturally.")
     print("Open in your browser: http://127.0.0.1:5000")

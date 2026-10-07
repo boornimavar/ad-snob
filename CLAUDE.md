@@ -29,13 +29,15 @@ it only returns political/social-issue ads.
    The library then matches ads against earlier searches (same image hash
    or crop pHash <= 6), without SIFT.
 2. **Laptop app** (in progress): `demo.py` (Desktop shortcut, pythonw) runs
-   `analysis_api` locally on port 8050 and opens `gallery.html`, whose search
-   bar (`/search`, `/search/status`, `/search/stop`; only when
-   `CREATIVE_LENS_LOCAL_SEARCH=1`) runs `collector.collect` in the background
-   via `search_runner.py`. The user found the separate Tk window ugly, so it
-   was removed (2026-10-07). The app exits 15 min after the page stops
-   polling. `collector.py` stays as the command-line version. Still to do: a
-   single .exe (PyInstaller).
+   the ORIGINAL dashboard (`dashboard_server_temporary.py` + `dashboard.html`)
+   on port 8050 and opens it. The user wants the old UI (hero, industry list,
+   filters, live search panel with counts, saved ads, rich cards), so a
+   stripped-down gallery search bar and the Tk window were dropped
+   (2026-10-07). Added to the old server: results last a day
+   (`expire_old_results`, `has_fresh_results`, kept across restarts), the
+   "0 ads = probably rate-limited" message, `/api/health` + a page heartbeat
+   so the app exits 15 min after the page closes. `collector.py` stays as
+   the command-line version. Still to do: a single .exe (PyInstaller).
 3. **Free hosting** (in progress, Option A): `library.py` has the matching
    rules once (`_LibraryRules`) and two stores: `Library` (SQLAlchemy;
    SQLite locally) and `SupabaseLibrary` (Supabase REST + Storage, signed in
@@ -64,8 +66,8 @@ Phase 2 = shared library on Hugging Face (Supabase is blocked by ACT).
 - `meta_ads_collector` must be **1.4.0** (from `meta_ads_collector_source.zip`).
   1.5.1 raises on rate limiting and pages through empty results; that broke all
   searches on 2026-10-01. Never `pip install meta-ads-collector`.
-- With 1.4.0 a rate-limited search ends quietly with 0 ads; the dashboard should
-  explain that instead of just "Search complete" (not fixed yet).
+- With 1.4.0 a rate-limited search ends quietly with 0 ads; the dashboard now
+  says so (NO_ADS_MESSAGE) instead of just "Search complete".
 - Request 30 ads per page (`SCRAPE_PAGE_SIZE`), 500 ads max per search. The user
   does not want a lower cap (it drops ads; searches can't resume). The 500
   counts Meta *ads*; each ad can hold several images. Real search: 67 ads ->

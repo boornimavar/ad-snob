@@ -309,6 +309,9 @@ function downloadSelected(){if(!selectedIds.size){showError('Select one or more 
 $('q').addEventListener('keydown',e=>{if(e.key==='Enter')submitSearch()});$('fCategory').addEventListener('change',()=>{const value=$('fCategory').value;$('q').value=value;if(value)submitSearch()});['fCountry','fPlatform','fMedia','fStatus','fDate','fBrand'].forEach(id=>$(id).addEventListener('change',()=>loadCreatives(lastSearchQuery)));$('q').addEventListener('input',()=>{if(!currentScrapeTarget)applySearchAndRender()});window.addEventListener('beforeunload',()=>{if(pollTimer)clearInterval(pollTimer)});
 // Start quietly: do not trigger a broad scrape until the user chooses a search.
 $('resultCount').textContent='Choose an industry or search phrase to begin';$('emptyMsg').style.display='block';$('grid').style.display='block';
+
+// Tell the app this page is still open, so it doesn't stop itself (demo.py).
+setInterval(()=>fetch('/api/health').catch(()=>{}),60000);
 </script>
 </body>
 </html>
