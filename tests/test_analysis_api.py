@@ -326,7 +326,7 @@ def test_library_can_be_browsed_without_the_key(api, monkeypatch):
     assert len(rows) == 1
     assert picture.status_code == 200 and picture.mimetype == "image/jpeg"
     assert Image.open(io.BytesIO(picture.data)).format == "JPEG"
-    assert categories == [{"category": "skincare", "country": "IN", "active": 1, "archived": 0}]
+    assert categories == [{"category": "skincare", "country": "IN", "count": 1}]
     assert api.post("/jobs").status_code == 401  # writing still needs the key
 
 

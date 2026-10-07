@@ -69,8 +69,8 @@ one step. Set `CREATIVE_LENS_API_KEY` to require an `X-API-Key` header.
 Start a job with `{"category": "skincare", "country": "IN"}` and finishing
 it saves the search's unique ads to the shared library (with a small copy
 of each picture, since Meta's links expire). Browse it with
-`GET /library?category=skincare` (`&archived=true` for ads not seen in 14
-days, `&design_led_only=false` for everything) and `GET /library/categories`.
+`GET /library?category=skincare` (ads found in the last 24 hours;
+`&design_led_only=false` for everything) and `GET /library/categories`.
 By default the library is `library.db` and `thumbnails/` next to the code;
 set `CREATIVE_LENS_DATABASE_URL` to use a hosted database.
 
@@ -80,7 +80,8 @@ Double-click the **Creative Lens** shortcut on the Desktop (it runs
 `.venv\Scripts\pythonw.exe demo.py`). The Collector window opens and the
 gallery opens in the browser. Searches are scored on the laptop and saved to
 the local library (`library.db`, `thumbnails/`); **Open results** jumps to
-that category in the gallery. Log: `demo.log`.
+that category in the gallery. Results last a day: ads no search has found
+in the last 24 hours are deleted with their pictures. Log: `demo.log`.
 
 ## Laptop collector (Step 2)
 

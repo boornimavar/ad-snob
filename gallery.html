@@ -29,9 +29,6 @@ main{padding:24px 28px;min-width:0}
 h1{font:500 clamp(24px,3vw,34px)/1.15 var(--serif);margin:0}
 .sub{color:var(--muted);font-size:13px;margin-top:4px}
 .controls{display:flex;flex-wrap:wrap;gap:10px;align-items:center}
-.tabs{display:flex;background:var(--panel);border:1px solid var(--line);border-radius:10px;padding:3px}
-.tabs button{border:0;background:none;padding:6px 14px;border-radius:7px;font-size:13px;color:var(--muted)}
-.tabs button[aria-pressed="true"]{background:var(--panel-2);color:var(--ink)}
 .toggle{display:flex;gap:8px;align-items:center;font-size:13px;color:var(--muted)}
 .toggle input{accent-color:var(--lime);width:16px;height:16px}
 .grid{columns:4 220px;column-gap:14px}
@@ -72,7 +69,7 @@ dialog::backdrop{background:#000a}
 <div class="layout">
   <aside>
     <div class="brand">Creative Lens</div>
-    <p class="tagline">Design-led Meta ads collected by the team</p>
+    <p class="tagline">Design-led Meta ads from the last 24 hours</p>
     <div class="label">Categories</div>
     <nav class="cats" id="cats"></nav>
   </aside>
@@ -83,10 +80,6 @@ dialog::backdrop{background:#000a}
         <div class="sub" id="sub"></div>
       </div>
       <div class="controls">
-        <div class="tabs" role="group" aria-label="Which ads">
-          <button id="tab-active" aria-pressed="true">Active</button>
-          <button id="tab-archive" aria-pressed="false">Archive</button>
-        </div>
         <label class="toggle"><input type="checkbox" id="design-led" checked> Design-led only</label>
       </div>
     </div>
@@ -99,10 +92,10 @@ dialog::backdrop{background:#000a}
      page reads the team library from Supabase. Without it, it reads the local service. -->
 <script src="config.js"></script>
 <script>
-const ARCHIVE_DAYS = 14;
+const KEEP_HOURS = 24;  // results last a day (library.KEEP_HOURS)
 const DESIGN_LED_MIN = 0.5;
 const SUPABASE = window.CREATIVE_LENS && window.CREATIVE_LENS.supabaseUrl ? window.CREATIVE_LENS : null;
-const state = {category: "", country: "", archived: false, designLed: true, categories: []};
+const state = {category: "", country: "", designLed: true, categories: []};
 
 function el(tag, attrs = {}, ...children) {
   const node = document.createElement(tag);
@@ -119,7 +112,6 @@ function readHash() {
   const p = new URLSearchParams(location.hash.slice(1));
   state.category = p.get("category") || "";
   state.country = p.get("country") || "";
-  state.archived = p.get("view") === "archive";
   state.designLed = p.get("all") !== "1";
 }
 
@@ -127,14 +119,14 @@ function writeHash() {
   const p = new URLSearchParams();
   if (state.category) p.set("category", state.category);
   if (state.country) p.set("country", state.country);
-  if (state.archived) p.set("view", "archive");
   if (!state.designLed) p.set("all", "1");
   history.replaceState(null, "", "#" + p.toString());
 }
 
-function shortDate(text) {
+function foundWhen(text) {
   const d = new Date(text.includes("T") ? text : text.replace(" ", "T") + "Z");
-  return d.toLocaleDateString(undefined, {day: "numeric", month: "short"});
+  const time = d.toLocaleTimeString(undefined, {hour: "numeric", minute: "2-digit"});
+  return d.toDateString() === new Date().toDateString() ? `today ${time}` : `yesterday ${time}`;
 }
 
 function picture(ad, onError) {
@@ -147,7 +139,7 @@ function picture(ad, onError) {
 function renderCategories() {
   const nav = document.getElementById("cats");
   nav.replaceChildren();
-  const total = state.categories.reduce((n, c) => n + (state.archived ? c.archived : c.active), 0);
+  const total = state.categories.reduce((n, c) => n + c.count, 0);
   const all = el("button", {class: "cat", "aria-current": String(!state.category), onclick: () => choose("", "")},
     el("span", {}, "All categories"), el("span", {class: "n"}, String(total)));
   nav.append(all);
@@ -155,7 +147,7 @@ function renderCategories() {
     const current = c.category.toLowerCase() === state.category.toLowerCase() && c.country === state.country;
     nav.append(el("button", {class: "cat", "aria-current": String(current), onclick: () => choose(c.category, c.country)},
       el("span", {}, `${c.category} · ${c.country}`),
-      el("span", {class: "n"}, String(state.archived ? c.archived : c.active))));
+      el("span", {class: "n"}, String(c.count))));
   }
 }
 
@@ -169,12 +161,12 @@ function renderAds(ads) {
   grid.replaceChildren();
   document.getElementById("title").textContent = state.category ? `${state.category} · ${state.country}` : "All categories";
   const brands = new Set(ads.map(a => a.brand)).size;
-  document.getElementById("sub").textContent = `${ads.length} ${state.archived ? "archived" : "active"} ads from ${brands} brands` +
-    (state.archived ? ` · not seen in any search for ${ARCHIVE_DAYS}+ days` : " · best first");
+  document.getElementById("sub").textContent =
+    `${ads.length} ads from ${brands} brands, found in the last ${KEEP_HOURS} hours · best first`;
   if (!ads.length) {
-    grid.append(el("div", {class: "empty"}, state.archived
-      ? "Nothing in the archive here yet."
-      : "No ads here yet. Run a search with the Collector app and they'll appear here."));
+    grid.append(el("div", {class: "empty"},
+      `No searches here in the last ${KEEP_HOURS} hours. Run one with the Collector app; ` +
+      "its ads appear here and stay for a day."));
     return;
   }
   for (const ad of ads) {
@@ -184,7 +176,7 @@ function renderAds(ads) {
       el("div", {class: "meta"},
         el("div", {class: "row"},
           el("span", {class: "score" + (ad.rank_score >= 0.5 ? " hi" : "")}, score),
-          el("span", {class: "seen"}, `last seen ${shortDate(ad.last_seen_at)}`)),
+          el("span", {class: "seen"}, `found ${foundWhen(ad.last_seen_at)}`)),
         el("div", {class: "who"}, ad.brand || "Unknown brand"))));
   }
 }
@@ -201,7 +193,8 @@ function showDetail(ad) {
         el("h2", {}, ad.brand || "Unknown brand"),
         el("p", {}, `Design score ${ad.rank_score == null ? "–" : ad.rank_score.toFixed(2)}` +
           (ad.creative_variant_count ? ` · ${ad.creative_variant_count} near-copies hidden` : "")),
-        el("p", {}, `First seen ${shortDate(ad.first_seen_at)} · last seen ${shortDate(ad.last_seen_at)} · found in ${ad.times_seen} search${ad.times_seen === 1 ? "" : "es"}`),
+        el("p", {}, `Found ${foundWhen(ad.last_seen_at)}` +
+          (ad.times_seen > 1 ? ` · in ${ad.times_seen} searches today` : "") + ` · shown for ${KEEP_HOURS} hours`),
         ...lines.map(t => el("p", {}, t)),
         d.ad_id ? el("p", {}, el("a", {href: `https://www.facebook.com/ads/library/?id=${encodeURIComponent(d.ad_id)}`,
           target: "_blank", rel: "noreferrer"}, "Open in Meta Ad Library ↗")) : null)));
@@ -224,21 +217,20 @@ async function loadCategories() {
   }
   const rows = await getJSON(`${SUPABASE.supabaseUrl}/rest/v1/ad_categories?select=*`, {apikey: SUPABASE.publishableKey});
   return rows.map(r => ({category: r.category, country: r.country,
-    active: state.designLed ? r.active_design_led : r.active,
-    archived: state.designLed ? r.archived_design_led : r.archived}));
+    count: state.designLed ? r.count_design_led : r.count}));
 }
 
 async function loadAds() {
   if (!SUPABASE) {
-    const q = new URLSearchParams({archived: state.archived, design_led_only: state.designLed});
+    const q = new URLSearchParams({design_led_only: state.designLed});
     if (state.category) q.set("category", state.category);
     if (state.country) q.set("country", state.country);
     return (await getJSON("library?" + q)).ads;
   }
-  const cutoff = new Date(Date.now() - ARCHIVE_DAYS * 864e5).toISOString();
+  const cutoff = new Date(Date.now() - KEEP_HOURS * 36e5).toISOString();
   const q = new URLSearchParams({
     select: "id,category,country,brand,image_url,thumbnail_key,rank_score,creative_variant_count,details,first_seen_at,last_seen_at,times_seen",
-    last_seen_at: (state.archived ? "lt." : "gte.") + cutoff,
+    last_seen_at: "gte." + cutoff,
     order: "rank_score.desc.nullslast,id.asc", limit: "1000"});
   if (state.designLed) q.set("rank_score", "gte." + DESIGN_LED_MIN);
   if (state.category) q.set("category_key", "eq." + categoryKey(state.category));
@@ -253,8 +245,6 @@ async function loadAds() {
 
 async function refresh() {
   writeHash();
-  document.getElementById("tab-active").setAttribute("aria-pressed", String(!state.archived));
-  document.getElementById("tab-archive").setAttribute("aria-pressed", String(state.archived));
   document.getElementById("design-led").checked = state.designLed;
   try {
     const [categories, ads] = await Promise.all([loadCategories(), loadAds()]);
@@ -266,8 +256,6 @@ async function refresh() {
   }
 }
 
-document.getElementById("tab-active").onclick = () => { state.archived = false; refresh(); };
-document.getElementById("tab-archive").onclick = () => { state.archived = true; refresh(); };
 document.getElementById("design-led").onchange = e => { state.designLed = e.target.checked; refresh(); };
 document.getElementById("dialog").addEventListener("click", e => { if (e.target.id === "dialog") e.target.close(); });
 window.addEventListener("hashchange", () => { readHash(); refresh(); });  // pasted links, Back button

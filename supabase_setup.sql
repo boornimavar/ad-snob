@@ -38,17 +38,17 @@ drop policy if exists "The collector can update ads" on public.ads;
 create policy "The collector can update ads" on public.ads for update to authenticated using (true) with check (true);
 revoke delete on public.ads from anon, authenticated;
 
--- Per-category counts for the gallery's list (14 days = active, 0.5+ = design-led).
-create or replace view public.ad_categories with (security_invoker = on) as
+-- Per-category counts for the gallery's list: results last a day; 0.5+ = design-led.
+drop view if exists public.ad_categories;
+create view public.ad_categories with (security_invoker = on) as
 select
   category_key,
   min(category) as category,
   country,
-  count(*) filter (where last_seen_at >= now() - interval '14 days') as active,
-  count(*) filter (where last_seen_at <  now() - interval '14 days') as archived,
-  count(*) filter (where last_seen_at >= now() - interval '14 days' and rank_score >= 0.5) as active_design_led,
-  count(*) filter (where last_seen_at <  now() - interval '14 days' and rank_score >= 0.5) as archived_design_led
+  count(*) as count,
+  count(*) filter (where rank_score >= 0.5) as count_design_led
 from public.ads
+where last_seen_at >= now() - interval '24 hours'
 group by category_key, country
 order by category_key, country;
 grant select on public.ad_categories to anon, authenticated;

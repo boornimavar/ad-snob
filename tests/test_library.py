@@ -53,7 +53,7 @@ def test_duplicates_within_the_search_and_failed_ads_are_not_stored(lib):
 
 def test_same_ad_found_again_is_marked_seen_not_added(lib):
     lib.save_search("skincare", "IN", [result("a", "ffff000000000000")], {"a": b"old"}, now=T0)
-    later = T0 + timedelta(days=3)
+    later = T0 + timedelta(hours=3)
 
     counts = lib.save_search("SKINCARE", "IN",
                              [result("a2", "ffff000000000000")], {"a2": b"new"}, now=later)
@@ -92,15 +92,44 @@ def test_each_category_and_country_keeps_its_own_copy(lib):
     assert len(lib.browse(now=T0)) == 3
 
 
-def test_ads_not_seen_for_14_days_move_to_the_archive(lib):
-    lib.save_search("skincare", "IN", [result("old", "ffff000000000000"), result("kept", "0000ffff00000000")], {},
-                    now=T0)
-    lib.save_search("skincare", "IN", [result("kept", "0000ffff00000000")], {}, now=T0 + timedelta(days=10))
-    day_15 = T0 + timedelta(days=15)
+def test_results_last_a_day_then_are_deleted_with_their_pictures(lib, tmp_path):
+    lib.save_search("skincare", "IN", [result("old", "ffff000000000000"), result("kept", "0000ffff00000000")],
+                    {"old": b"old-pic", "kept": b"kept-pic"}, now=T0)
+    lib.save_search("skincare", "IN", [result("kept", "0000ffff00000000")], {}, now=T0 + timedelta(hours=20))
+    next_day = T0 + timedelta(hours=25)
 
-    assert [r["image_hash"] for r in lib.browse("skincare", now=day_15)] == ["0000ffff00000000"]
-    assert [r["image_hash"] for r in lib.browse("skincare", archived=True, now=day_15)] == ["ffff000000000000"]
-    assert lib.categories(now=day_15) == [{"category": "skincare", "country": "IN", "active": 1, "archived": 1}]
+    assert [r["image_hash"] for r in lib.browse("skincare", now=next_day)] == ["0000ffff00000000"]  # hidden at once
+    assert lib.remove_expired(now=next_day) == 1
+    assert not (tmp_path / "thumbs" / "old.jpg").exists()
+    assert (tmp_path / "thumbs" / "kept.jpg").read_bytes() == b"kept-pic"
+    assert lib.categories(now=next_day) == [{"category": "skincare", "country": "IN", "count": 1}]
+
+
+def test_a_category_nobody_searched_today_disappears(lib):
+    lib.save_search("skincare", "IN", [result("a", "ffff000000000000")], {}, now=T0)
+
+    assert lib.categories(now=T0 + timedelta(hours=25)) == []
+    assert lib.browse(now=T0 + timedelta(hours=25)) == []
+
+
+def test_an_ad_found_again_the_next_day_comes_back_as_new(lib):
+    lib.save_search("skincare", "IN", [result("a", "ffff000000000000")], {"a": b"pic"}, now=T0)
+
+    counts = lib.save_search("skincare", "IN", [result("a2", "ffff000000000000")], {"a2": b"new-pic"},
+                             now=T0 + timedelta(hours=30))
+
+    assert counts == {"new": 1, "seen_again": 0}
+    [row] = lib.browse("skincare", now=T0 + timedelta(hours=30))
+    assert row["times_seen"] == 1 and row["thumbnail_url"] == "/thumbnails/a2.jpg"
+
+
+def test_a_picture_shared_by_a_kept_ad_is_not_deleted(lib, tmp_path):
+    # The same Meta ad found in two categories shares one picture copy.
+    lib.save_search("skincare", "IN", [result("a", "ffff000000000000")], {"a": b"pic"}, now=T0)
+    lib.save_search("beauty", "IN", [result("a", "ffff000000000000")], {"a": b"pic"}, now=T0 + timedelta(hours=20))
+
+    assert lib.remove_expired(now=T0 + timedelta(hours=25)) == 1
+    assert (tmp_path / "thumbs" / "a.jpg").exists()
 
 
 def test_browse_is_best_first_and_design_led_by_default(lib):
@@ -160,8 +189,8 @@ def test_category_counts_can_follow_the_design_led_switch(lib):
     lib.save_search("skincare", "IN", [result("hi", "ffff000000000000", rank=0.9),
                                        result("lo", "0000ffff00000000", rank=0.2)], {}, now=T0)
 
-    assert lib.categories(now=T0)[0]["active"] == 2
-    assert lib.categories(design_led_only=True, now=T0)[0]["active"] == 1
+    assert lib.categories(now=T0)[0]["count"] == 2
+    assert lib.categories(design_led_only=True, now=T0)[0]["count"] == 1
 
 
 # --- the team's Supabase library (through a fake of Supabase's web API) ---------
@@ -254,7 +283,7 @@ def test_supabase_library_adds_ads_and_pictures(supa):
 def test_supabase_library_marks_ads_seen_again(supa):
     lib = supabase_library(supa)
     lib.save_search("skincare", "IN", [result("a", "ffff000000000000")], {}, now=T0)
-    later = T0 + timedelta(days=2)
+    later = T0 + timedelta(hours=2)
 
     counts = lib.save_search("skincare", "IN", [result("a2", "ffff000000000000")], {"a2": b"pic"}, now=later)
 

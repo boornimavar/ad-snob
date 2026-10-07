@@ -31,6 +31,8 @@ def free_port(preferred=PREFERRED_PORT, tries=20):
 def serve_gallery(port, ready):
     import analysis_api  # heavy (torch, CLIP), so loaded off the window's thread
     from werkzeug.serving import make_server
+    removed = analysis_api.get_library().remove_expired()  # results last a day
+    print(f"[DEMO] Removed {removed} ads older than a day")
     server = make_server("127.0.0.1", port, analysis_api.app, threaded=True)
     ready.set()
     server.serve_forever()

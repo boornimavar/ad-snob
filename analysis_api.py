@@ -357,11 +357,10 @@ def analyze():
 
 @app.route("/library")
 def browse_library():
-    """Gallery data: ?category=&country=&archived=true&design_led_only=false"""
+    """Gallery data: ads found in the last day. ?category=&country=&design_led_only=false"""
     args = request.args
     rows = get_library().browse(
         category=args.get("category") or None, country=args.get("country") or None,
-        archived=args.get("archived", "false").lower() == "true",
         design_led_only=args.get("design_led_only", "true").lower() == "true",
     )
     return jsonify({"ads": rows})

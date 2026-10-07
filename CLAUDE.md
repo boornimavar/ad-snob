@@ -42,11 +42,19 @@ it only returns political/social-issue ads.
    `.env` (`collector.load_settings`; never print it). `gallery.html` reads
    Supabase when `config.js` exists (public URL + publishable key only;
    `deploy_space.py` builds it and refuses secret keys) and is published to a
-   free HF Static Space. Decided with the user (2026-10-06): only unique ads
-   are stored, one row per ad per category+country; unseen 14 days ->
-   Archive (never deleted); each unique ad keeps a ~600px JPEG copy because
-   Meta image links expire within days. Still to do: user's Supabase setup +
+   free HF Static Space. Only unique ads are stored, one row per ad per
+   category+country, each with a ~600px JPEG copy (Meta image links expire
+   within days). **Results last a day (decided 2026-10-07, replacing the
+   earlier 14-day Archive):** ads no search found in the last 24 hours are
+   hidden and deleted with their pictures (`Library.remove_expired`, run
+   before each save and at demo start). The user doesn't want old ads that
+   may no longer run; no Archive tab, no Save button (could add later). Still to do: user's Supabase setup +
    first real search into it, publish the gallery, then the `.exe`.
+**Next (agreed 2026-10-07):** Phase 1 = package the demo (Collector +
+gallery, local library) as one Windows download (PyInstaller, ~1-1.5 GB:
+torch, CLIP weights, Tesseract must be bundled) + a user guide; share via
+the team's Google Drive (not public HF: Phase 2 builds would hold a key).
+Phase 2 = shared library on Hugging Face (Supabase is blocked by ACT).
 4. **Improvements**: 👍/👎 labels in the gallery feeding `--retrain`.
 
 ## Hard-won facts

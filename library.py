@@ -8,10 +8,11 @@ Two places it can live, with the same rules for what gets stored:
   add and update ads but not delete them; see supabase_setup.sql). The
   gallery reads it directly.
 
-An ad is "active" while some search of its category keeps finding it; after
-ARCHIVE_AFTER_DAYS without being seen it moves to the archive (never deleted).
-Meta's image links expire after a few days, so each unique ad also gets a
-small picture copy.
+Results last a day: an ad stays for KEEP_HOURS after a search last found it,
+then it is deleted with its picture copy (remove_expired), so the gallery
+only shows what Meta was running recently. Searching a category again within
+the day refreshes it. Each unique ad gets a small picture copy because Meta's
+image links stop working after a few days.
 """
 import io
 import json
@@ -30,7 +31,7 @@ from sqlalchemy import (
 
 import meta_design_scraper_session as scraper
 
-ARCHIVE_AFTER_DAYS = 14
+KEEP_HOURS = 24  # decided with the user 2026-10-07: "brand new search every day"
 DESIGN_LED_MIN_SCORE = 0.5  # same cut-off as the dashboard's "design-led only"
 THUMBNAIL_MAX_SIDE = 600
 THUMBNAIL_JPEG_QUALITY = 80
@@ -103,6 +104,7 @@ class _LibraryRules:
         (by the search's own duplicate rules) is marked seen again, not re-added.
         """
         now = now or utc_now()
+        self.remove_expired(now)  # so an ad from yesterday comes back as new, with today's details
         key, country = category_key(category), (country or "").upper()
         keep = [r for r in results if r.get("ok") and r.get("is_creative_representative") == 1]
         counts = {"new": 0, "seen_again": 0}
@@ -178,6 +180,9 @@ class LocalImageStore:
     def save(self, key, data):
         (self.folder / key).write_bytes(data)
 
+    def delete(self, key):
+        (self.folder / key).unlink(missing_ok=True)
+
     def url_for(self, key):
         return f"/thumbnails/{key}"
 
@@ -214,10 +219,27 @@ class Library(_LibraryRules):
         with self.engine.begin() as conn:
             yield _SqlWriter(conn)
 
-    def browse(self, category=None, country=None, archived=False, design_led_only=True, now=None, limit=1000):
-        """Ads for the gallery, best first. Active = seen within ARCHIVE_AFTER_DAYS."""
-        cutoff = (now or utc_now()) - timedelta(days=ARCHIVE_AFTER_DAYS)
-        query = select(ads).where(ads.c.last_seen_at < cutoff if archived else ads.c.last_seen_at >= cutoff)
+    def remove_expired(self, now=None):
+        """Delete ads no search has found for KEEP_HOURS, and their picture
+        copies (unless another kept row still uses the same copy). Returns how many."""
+        cutoff = (now or utc_now()) - timedelta(hours=KEEP_HOURS)
+        with self.engine.begin() as conn:
+            old = conn.execute(select(ads.c.id, ads.c.thumbnail_key).where(ads.c.last_seen_at < cutoff)).all()
+            if not old:
+                return 0
+            conn.execute(ads.delete().where(ads.c.last_seen_at < cutoff))
+            still_used = set(conn.execute(select(ads.c.thumbnail_key).where(ads.c.thumbnail_key.is_not(None))).scalars())
+        for key in {k for _id, k in old if k} - still_used:
+            try:
+                self.images.delete(key)
+            except Exception as exc:
+                print(f"[LIBRARY] Could not delete picture {key}: {exc}")
+        return len(old)
+
+    def browse(self, category=None, country=None, design_led_only=True, now=None, limit=1000):
+        """Ads found in the last KEEP_HOURS, best first."""
+        cutoff = (now or utc_now()) - timedelta(hours=KEEP_HOURS)
+        query = select(ads).where(ads.c.last_seen_at >= cutoff)
         if category:
             query = query.where(ads.c.category_key == category_key(category))
         if country:
@@ -237,20 +259,19 @@ class Library(_LibraryRules):
         return row
 
     def categories(self, design_led_only=False, now=None):
-        """[{category, country, active, archived}] for every category in the library.
+        """[{category, country, count}] for each category searched in the last KEEP_HOURS.
 
         With design_led_only, only ads scoring DESIGN_LED_MIN_SCORE+ are counted
-        (categories with none are still listed, with zeros)."""
-        cutoff = (now or utc_now()) - timedelta(days=ARCHIVE_AFTER_DAYS)
+        (a category with none is still listed, with 0)."""
+        cutoff = (now or utc_now()) - timedelta(hours=KEEP_HOURS)
         counted = ads.c.rank_score >= DESIGN_LED_MIN_SCORE if design_led_only else True
-        active = func.sum(case(((ads.c.last_seen_at >= cutoff) & counted, 1), else_=0))
-        total = func.sum(case((counted, 1), else_=0))
-        query = (select(ads.c.category_key, func.min(ads.c.category), ads.c.country, active, total)
+        query = (select(ads.c.category_key, func.min(ads.c.category), ads.c.country,
+                        func.sum(case((counted, 1), else_=0)))
+                 .where(ads.c.last_seen_at >= cutoff)
                  .group_by(ads.c.category_key, ads.c.country).order_by(ads.c.category_key, ads.c.country))
         with self.engine.connect() as conn:
-            return [{"category": name, "country": country, "active": int(n_active or 0),
-                     "archived": int((n_total or 0) - (n_active or 0))}
-                    for _key, name, country, n_active, n_total in conn.execute(query)]
+            return [{"category": name, "country": country, "count": int(n or 0)}
+                    for _key, name, country, n in conn.execute(query)]
 
 
 # --- Supabase (the team's shared library) ----------------------------------------
@@ -354,6 +375,11 @@ class SupabaseLibrary(_LibraryRules):
     @contextmanager
     def _writer(self):
         yield _SupabaseWriter(self.base, self.login, self.session)
+
+    def remove_expired(self, now=None):
+        """The collector user may not delete (supabase_setup.sql), so expired ads
+        are only hidden here: the gallery shows the last KEEP_HOURS."""
+        return 0
 
 
 SUPABASE_SETTINGS = ("SUPABASE_URL", "SUPABASE_PUBLISHABLE_KEY",
