@@ -120,6 +120,7 @@ body{font-size:15px;line-height:1.55;letter-spacing:0}
   <div class="side-divider"></div>
   <div class="side-label">Explore by industry</div>
   <nav class="category-list" aria-label="Search categories">
+    <button class="category-btn" data-query="" onclick="chooseCategory('','All searched ads')" title="Every ad from today's searches, best first"><span class="nav-icon">☷</span><span class="nav-label">All searched ads</span></button>
     <div class="category-group-label">Beauty & personal care</div>
     <button class="category-btn" data-query="skincare" onclick="chooseCategory('skincare','Skincare')"><span class="nav-icon">◌</span><span class="nav-label">Skincare</span></button>
     <button class="category-btn" data-query="beauty" onclick="chooseCategory('beauty','Beauty')"><span class="nav-icon">✳</span><span class="nav-label">Beauty & cosmetics</span></button>
@@ -137,7 +138,6 @@ body{font-size:15px;line-height:1.55;letter-spacing:0}
     <button class="category-btn" data-query="SaaS" onclick="chooseCategory('SaaS','SaaS & software')"><span class="nav-icon">⌘</span><span class="nav-label">SaaS & software</span></button>
     <button class="category-btn" data-query="pet care" onclick="chooseCategory('pet care','Pet care')"><span class="nav-icon">♡</span><span class="nav-label">Pet care</span></button>
     <button class="category-btn" data-query="travel" onclick="chooseCategory('travel','Travel & hospitality')"><span class="nav-icon">✦</span><span class="nav-label">Travel & hospitality</span></button>
-    <button class="category-btn" data-query="" onclick="chooseCategory('','All industries')"><span class="nav-icon">☷</span><span class="nav-label">All industries</span></button>
   </nav>
   <div class="sidebar-bottom"><div class="design-filter"><div class="design-filter-head"><span>✳</span> Design-led filter</div><p>Prioritise image creatives with stronger design signals.</p><div class="switch-row"><span id="designFilterLabel">Enabled</span><button id="designSwitch" class="switch active" aria-label="Toggle design-led filter" onclick="toggleDesignLed()"></button></div></div></div>
 </aside>
