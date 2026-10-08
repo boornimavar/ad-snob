@@ -104,6 +104,14 @@ Phase 2 = shared library on Hugging Face (Supabase is blocked by ACT).
   Any future attempt needs a hard cap on requests per search, a watchdog
   that counts pages, and one real search before stacking more changes. The
   dashboard's poll also gives up after 900 polls (~30 min) and hides Stop.
+- Smart App Control on a colleague's laptop (2026-10-08) blocked scipy's
+  `_propack` DLL (pulled in by scikit-learn). Result: the ranking model AND
+  CLIP failed (load_models crashed half-way, leaving prompt features None),
+  so every score came from the heuristic (max ~0.42, never design-led). Fix:
+  the app reads both models from `rank_model_v1.json` / `design_classifier.json`
+  with numpy (`linear_model.py`; identical scores), the build excludes
+  sklearn, and load_models only marks CLIP loaded once it fully succeeds.
+  `--retrain` still uses sklearn and writes the JSON too.
 - Failed searches must never auto-restart (makes rate limiting worse).
 - The collector reads Meta's website, not an official API: a terms-of-service
   grey area. Don't suggest proxies or other ways around Meta's blocking.
@@ -114,7 +122,7 @@ Phase 2 = shared library on Hugging Face (Supabase is blocked by ACT).
   rank_model_v1.pkl, collector 1.4.0 unzipped from the zip into
   site-packages). `design_classifier.pkl` (sklearn 1.6.1) still warns; it is
   diagnostics only.
-- Tests: `.venv\Scripts\python.exe -m pytest tests` (140 pass; they never contact Meta or Supabase).
+- Tests: `.venv\Scripts\python.exe -m pytest tests` (142 pass; they never contact Meta or Supabase).
   Window tests share one Tk root: creating many in one process intermittently
   fails here with "Can't find a usable init.tcl".
 - Don't run real Meta searches yourself; ask the user (it can rate-limit

@@ -19,6 +19,7 @@ import numpy as np
 from PIL import Image, ImageStat
 import imagehash
 import joblib
+from linear_model import LinearModel, export as export_linear_model
 import torch
 import clip
 import pytesseract
@@ -43,6 +44,10 @@ MASTER_DB_PATH = BASE_DIR / "master.db"  # one accumulating database, across eve
 # Optional legacy classifier is diagnostics only. It NEVER affects KEEP.
 ML_MODEL_PATH = BASE_DIR / "design_classifier.pkl"
 RANK_MODEL_PATH = BASE_DIR / "rank_model_v1.pkl"
+# The same models as plain weights, read with numpy only (see linear_model.py).
+# Preferred over the .pkl files so the app never needs scikit-learn/scipy.
+ML_MODEL_JSON = ML_MODEL_PATH.with_suffix(".json")
+RANK_MODEL_JSON = RANK_MODEL_PATH.with_suffix(".json")
 
 _rank_model_bundle = None
 RANK_FEATURES = ['clip_design_score','clip_product_score','broad_graphic_prob','broad_photo_prob',
@@ -114,6 +119,7 @@ def retrain_rank_model(data_dir):
         "trained_on_n": len(rows), "trained_on_files": [p.name for p in csv_files],
     }
     joblib.dump(bundle, RANK_MODEL_PATH)
+    export_linear_model(model, RANK_MODEL_JSON, scaler, RANK_FEATURES, {"trained_on_n": len(rows)})
 
     print("=" * 70)
     print("RETRAIN COMPLETE")
@@ -133,6 +139,14 @@ def _load_rank_model():
     None (silently) if it doesn't - callers fall back to the hand-set
     rank_score formula, so the pipeline still works without this file."""
     global _rank_model_bundle
+    if _rank_model_bundle is None and RANK_MODEL_JSON.exists():
+        try:
+            model = LinearModel.load(RANK_MODEL_JSON)
+            _rank_model_bundle = {"linear": model, "features": model.features, **model.info}
+            print(f"[MODEL] Loaded trained ranking model: {RANK_MODEL_JSON.name} "
+                  f"(trained on {model.info.get('trained_on_n', '?')} labeled examples)")
+        except Exception as exc:
+            print(f"[MODEL] Could not load {RANK_MODEL_JSON.name}: {exc}")
     if _rank_model_bundle is None and RANK_MODEL_PATH.exists():
         try:
             _rank_model_bundle = joblib.load(RANK_MODEL_PATH)
@@ -206,15 +220,26 @@ def load_models(model_path: Path):
     _clip_device = "cuda" if torch.cuda.is_available() else "cpu"
     print(f"[MODEL] Loading CLIP on {_clip_device}...")
     # The packaged app ships the weights and sets CREATIVE_LENS_CLIP_DIR; otherwise ~/.cache/clip.
-    _clip_model, _clip_preprocess = clip.load("ViT-B/32", device=_clip_device,
-                                              download_root=os.environ.get("CREATIVE_LENS_CLIP_DIR"))
-    _clip_model.eval()
+    # _clip_model is only set at the end: if anything below fails, the next call
+    # tries again instead of running with half-loaded models (2026-10-08 bug:
+    # a blocked scipy DLL left the prompt features empty and every CLIP score failed).
+    clip_model, _clip_preprocess = clip.load("ViT-B/32", device=_clip_device,
+                                             download_root=os.environ.get("CREATIVE_LENS_CLIP_DIR"))
+    clip_model.eval()
 
-    if model_path.exists():
-        print(f"[MODEL] Loading legacy classifier for diagnostics only: {model_path}")
-        _ml_model = joblib.load(model_path)
-    else:
-        print("[MODEL] Legacy classifier not found; using CLIP + OCR only.")
+    json_path = model_path.with_suffix(".json")
+    try:
+        if json_path.exists():
+            print(f"[MODEL] Loading legacy classifier for diagnostics only: {json_path}")
+            _ml_model = LinearModel.load(json_path)
+        elif model_path.exists():
+            print(f"[MODEL] Loading legacy classifier for diagnostics only: {model_path}")
+            _ml_model = joblib.load(model_path)
+        else:
+            print("[MODEL] Legacy classifier not found; using CLIP + OCR only.")
+    except Exception as exc:  # diagnostics only - never worth losing CLIP over
+        print(f"[MODEL] Legacy classifier skipped: {exc}")
+        _ml_model = None
 
     design_prompts = [
         "a professionally designed static advertising creative with typography, graphic layout, and visual hierarchy",
@@ -261,9 +286,9 @@ def load_models(model_path: Path):
         design_tokens = clip.tokenize(design_prompts).to(_clip_device)
         photo_tokens = clip.tokenize(photo_prompts).to(_clip_device)
         product_tokens = clip.tokenize(product_prompts).to(_clip_device)
-        design_features = _clip_model.encode_text(design_tokens)
-        photo_features = _clip_model.encode_text(photo_tokens)
-        product_features = _clip_model.encode_text(product_tokens)
+        design_features = clip_model.encode_text(design_tokens)
+        photo_features = clip_model.encode_text(photo_tokens)
+        product_features = clip_model.encode_text(product_tokens)
         design_features /= design_features.norm(dim=-1, keepdim=True)
         photo_features /= photo_features.norm(dim=-1, keepdim=True)
         product_features /= product_features.norm(dim=-1, keepdim=True)
@@ -273,13 +298,20 @@ def load_models(model_path: Path):
         broad_groups = []
         for prompts in (broad_graphic_prompts, broad_photo_prompts, broad_video_prompts, broad_product_prompts):
             tokens = clip.tokenize(prompts).to(_clip_device)
-            features = _clip_model.encode_text(tokens)
+            features = clip_model.encode_text(tokens)
             features /= features.norm(dim=-1, keepdim=True)
             # Mean normalized prompt embeddings gives one prototype per class.
             prototype = features.mean(dim=0, keepdim=True)
             prototype /= prototype.norm(dim=-1, keepdim=True)
             broad_groups.append(prototype)
         _broad_class_features = torch.cat(broad_groups, dim=0)
+    _clip_model = clip_model
+
+
+def _legacy_probability(embeddings):
+    if isinstance(_ml_model, LinearModel):
+        return _ml_model.probability(embeddings)
+    return _ml_model.predict_proba(embeddings)[:, 1]
 
 
 def predict_ml(image: Image.Image):
@@ -289,7 +321,7 @@ def predict_ml(image: Image.Image):
         image_tensor = _clip_preprocess(image).unsqueeze(0).to(_clip_device)
         with torch.no_grad():
             embedding = _clip_model.encode_image(image_tensor).cpu().numpy()
-        return float(_ml_model.predict_proba(embedding)[0][1])
+        return float(_legacy_probability(embedding)[0])
     except Exception as exc:
         print(f"[ML] Failed: {exc}")
         return None
@@ -558,6 +590,10 @@ def rank_score(record):
         return _rank_score_heuristic(record)
 
     features = bundle["features"]
+
+    if "linear" in bundle:
+        row = [[float(record.get(f, 0) or 0) for f in features]]
+        return round(float(bundle["linear"].probability(row)[0]), 4)
 
     if bundle.get("uses_rich_embedding"):
         embedding_str = record.get("clip_embedding") or ""
@@ -881,7 +917,7 @@ def predict_ml_batch(images):
         tensors = torch.stack([_clip_preprocess(image) for image in images]).to(_clip_device)
         with torch.no_grad():
             embeddings = _clip_model.encode_image(tensors).cpu().numpy()
-        return [float(x) for x in _ml_model.predict_proba(embeddings)[:, 1]]
+        return [float(x) for x in _legacy_probability(embeddings)]
     except Exception as exc:
         print(f"[ML BATCH] Failed; falling back to single-image inference: {exc}")
         return [predict_ml(image) for image in images]

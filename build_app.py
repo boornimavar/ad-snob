@@ -47,7 +47,7 @@ def stage_tesseract():
 
 def check_inputs():
     missing = [str(p) for p in (TESSERACT_DIR / "tesseract.exe", CLIP_WEIGHTS,
-                                ROOT / "design_classifier.pkl", ROOT / "rank_model_v1.pkl", ROOT / "dashboard.html")
+                                ROOT / "design_classifier.json", ROOT / "rank_model_v1.json", ROOT / "dashboard.html")
                if not p.exists()]
     if missing:
         sys.exit("Missing, can't build:\n  " + "\n  ".join(missing))
@@ -71,8 +71,8 @@ def run_pyinstaller(tesseract):
         "--distpath", str(ROOT / "dist"), "--workpath", str(ROOT / "build" / "pyinstaller"),
         "--specpath", str(ROOT / "build"),
         "--add-data", f"{ROOT / 'dashboard.html'}{sep}.",
-        "--add-data", f"{ROOT / 'design_classifier.pkl'}{sep}models",
-        "--add-data", f"{ROOT / 'rank_model_v1.pkl'}{sep}models",
+        "--add-data", f"{ROOT / 'design_classifier.json'}{sep}models",
+        "--add-data", f"{ROOT / 'rank_model_v1.json'}{sep}models",
         "--add-data", f"{CLIP_WEIGHTS}{sep}clip",
         "--add-data", f"{tesseract}{sep}tesseract",
         "--collect-all", "clip",  # its tokenizer vocabulary file
@@ -82,7 +82,9 @@ def run_pyinstaller(tesseract):
         *[arg for pyd in torchvision_compiled_ops() for arg in ("--add-binary", f"{pyd}{sep}torchvision")],
         "--collect-all", "curl_cffi",  # native library used by the Meta collector
         "--collect-submodules", "meta_ads_collector",
-        "--hidden-import", "sklearn.linear_model", "--hidden-import", "sklearn.preprocessing",
+        # The models are read from JSON with numpy (linear_model.py). scikit-learn pulls in
+        # scipy DLLs that Smart App Control blocked (_propack), so it is left out entirely.
+        "--exclude-module", "sklearn",
         "--exclude-module", "matplotlib", "--exclude-module", "IPython", "--exclude-module", "pytest",
         "--exclude-module", "tkinter",
     ]

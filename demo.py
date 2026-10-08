@@ -31,7 +31,7 @@ def use_packaged_files(bundle, data):
     """Point the app at the files shipped inside the package (bundle) and keep
     what it writes in a per-user folder (data). Returns data."""
     data.mkdir(parents=True, exist_ok=True)
-    for name in ("design_classifier.pkl", "rank_model_v1.pkl"):  # the models this version shipped with
+    for name in ("design_classifier.json", "rank_model_v1.json"):  # the models this version shipped with
         shutil.copy2(bundle / "models" / name, data / name)
     os.environ.setdefault("CREATIVE_LENS_DATA_DIR", str(data))
     os.environ.setdefault("CREATIVE_LENS_CLIP_DIR", str(bundle / "clip"))
