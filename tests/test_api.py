@@ -334,3 +334,78 @@ def test_a_search_that_finds_nothing_explains_why(client, fake_pipeline):
 
 def test_health_names_the_app(client):
     assert client.get("/api/health").get_json() == {"status": "ok", "app": "creative-lens"}
+
+
+# --- "Search again" button (2026-10-08) -----------------------------------------
+
+def _age_rows(db_path, hours):
+    from datetime import datetime, timedelta
+    conn = sqlite3.connect(db_path)
+    conn.execute("UPDATE ads SET last_seen_at=?", ((datetime.now() - timedelta(hours=hours)).strftime("%Y-%m-%d %H:%M:%S"),))
+    conn.commit(); conn.close()
+
+
+def test_search_again_runs_a_new_search_and_replaces_the_results(client, app_env, fake_pipeline):
+    insert_rows(app_env.SESSION_DB_PATH, [make_row(image_hash="aaaa000000000001"),   # Meta still runs this one
+                                          make_row(image_hash="aaaa000000000002")])  # ...but not this one
+    _age_rows(app_env.SESSION_DB_PATH, hours=2)
+    fake_pipeline["rows"] = [make_row(image_hash="aaaa000000000001"), make_row(image_hash="aaaa000000000003")]
+
+    data = client.get(f"/api/creatives?{QUERY}&refresh=1").get_json()
+    wait_for_stage(client, QUERY, ("done",))
+
+    assert data["on_demand_scraped"] is True and fake_pipeline["calls"] == ["skincare"]
+    rows = client.get(f"/api/creatives?{QUERY}").get_json()["rows"]
+    assert sorted(r["image_hash"] for r in rows) == ["aaaa000000000001", "aaaa000000000003"]
+
+
+def test_search_again_that_fails_keeps_the_old_results(client, app_env, fake_pipeline):
+    insert_rows(app_env.SESSION_DB_PATH, [make_row(image_hash="aaaa000000000001")])
+    _age_rows(app_env.SESSION_DB_PATH, hours=2)
+    fake_pipeline["behaviour"] = "rate_limited"
+
+    client.get(f"/api/creatives?{QUERY}&refresh=1")
+    wait_for_stage(client, QUERY, ("failed",))
+
+    rows = client.get(f"/api/creatives?{QUERY}").get_json()["rows"]
+    assert [r["image_hash"] for r in rows] == ["aaaa000000000001"]
+
+
+def test_search_again_cut_short_by_meta_keeps_the_old_results(client, app_env, fake_pipeline):
+    insert_rows(app_env.SESSION_DB_PATH, [make_row(image_hash="aaaa000000000001")])
+    _age_rows(app_env.SESSION_DB_PATH, hours=2)
+    fake_pipeline["behaviour"] = "partial"
+    fake_pipeline["rows"] = [make_row(image_hash="aaaa000000000009")]
+
+    client.get(f"/api/creatives?{QUERY}&refresh=1")
+    wait_for_stage(client, QUERY, ("done",))
+
+    rows = client.get(f"/api/creatives?{QUERY}").get_json()["rows"]
+    assert sorted(r["image_hash"] for r in rows) == ["aaaa000000000001", "aaaa000000000009"]
+
+
+def test_search_again_waits_out_a_rate_limit_cooldown(client, fake_pipeline):
+    fake_pipeline["behaviour"] = "rate_limited"
+    client.get(f"/api/creatives?{QUERY}")
+    wait_for_stage(client, QUERY, ("failed",))
+
+    data = client.get(f"/api/creatives?{QUERY}&refresh=1").get_json()
+
+    assert data["on_demand_scraped"] is False and data["retry_after"] > 0
+    assert fake_pipeline["calls"] == ["skincare"]
+
+
+def test_search_again_does_not_start_a_second_search(client, fake_pipeline):
+    fake_pipeline["behaviour"] = "wait"
+    client.get(f"/api/creatives?{QUERY}")
+    wait_for_stage(client, QUERY, ("collecting", "starting"))
+
+    data = client.get(f"/api/creatives?{QUERY}&refresh=1").get_json()
+
+    assert data["on_demand_scraped"] is False and fake_pipeline["calls"] == ["skincare"]
+    client.post(f"/api/stop-scrape?{QUERY}")
+
+
+def test_dashboard_has_the_search_again_button(client):
+    page = client.get("/").get_data(as_text=True)
+    assert 'id="searchAgainBtn"' in page and "refresh" in page

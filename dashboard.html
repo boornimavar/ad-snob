@@ -175,7 +175,7 @@ body{font-size:15px;line-height:1.55;letter-spacing:0}
     <div class="session-complete" id="sessionComplete">✓ Search complete. Your results are ready to explore.</div>
   </section>
   <section class="content">
-    <div class="content-heading"><div class="result-summary"><strong id="resultCount">Choose an industry to begin</strong><span class="live-badge"><span class="dot"></span> Session results</span></div><div class="view-actions"><button class="view-toggle active" title="Masonry gallery">▦</button><button class="view-toggle" title="List view" onclick="alert('List view is not available yet.')">☷</button><button class="filter-btn" onclick="downloadSelected()">↓ <span class="download-label">Download selected</span></button></div></div>
+    <div class="content-heading"><div class="result-summary"><strong id="resultCount">Choose an industry to begin</strong><span class="live-badge"><span class="dot"></span> Session results</span></div><div class="view-actions"><button class="view-toggle active" title="Masonry gallery">▦</button><button class="view-toggle" title="List view" onclick="alert('List view is not available yet.')">☷</button><button class="filter-btn" id="searchAgainBtn" onclick="searchAgain()" title="Search Meta again for this category, replacing these results once it succeeds" style="display:none">↻ Search again</button><button class="filter-btn" onclick="downloadSelected()">↓ <span class="download-label">Download selected</span></button></div></div>
     <div class="skeleton-grid" id="skeletonGrid"></div><div class="grid" id="grid"></div><div class="empty" id="emptyMsg"><strong>No creatives to show yet</strong>Start a search to collect ads, or broaden your search phrase. Results will appear here as analysis completes.<br><button onclick="document.getElementById('q').focus()">Edit search phrase</button></div>
   </section>
 </main>
@@ -190,6 +190,8 @@ function chooseCategory(query,label){document.querySelectorAll('.category-btn').
 function submitSearch(){const selectedCategory=$('fCategory').value;const q=$('q').value.trim()||selectedCategory;if(!q){showError('Choose an industry or enter a search phrase first.');$('q').focus();return} $('q').value=q;if(q!==selectedCategory)$('fCategory').value='';document.querySelectorAll('.category-btn').forEach(b=>b.classList.toggle('active',b.dataset.query===q));loadCreatives(q)}
 function describeFailure(p){const mins=Math.ceil(Number(p.retry_after||0)/60);return (p.message||'The search could not finish. Check the server terminal for details.')+(mins>0?` You can retry in about ${mins} minute${mins===1?'':'s'}.`:' You can retry it now.')}
 function retryCurrentSearch(){if(lastSearchQuery)loadCreatives(lastSearchQuery,{retry:true})}
+function searchAgain(){if(lastSearchQuery)loadCreatives(lastSearchQuery,{refresh:true})}
+function updateSearchAgain(){const busy=['starting','collecting','analyzing'].includes(currentStage);$('searchAgainBtn').style.display=lastSearchQuery&&!busy&&!showSavedOnly?'inline-flex':'none'}
 async function loadCreatives(typedSearch,opts={}){
   const requestId=++loadRequestId;
   if(pollTimer)clearInterval(pollTimer);
@@ -199,7 +201,7 @@ async function loadCreatives(typedSearch,opts={}){
   const cat=typeof typedSearch==='string'?typedSearch:$('fCategory').value;
   const country=$('fCountry').value;
   const platform=$('fPlatform').value,media=$('fMedia').value,status=$('fStatus').value,days=$('fDate').value,brand=$('fBrand').value.trim();
-  if(cat)params.set('category',cat);if(country)params.set('country',country);if(platform)params.set('platform',platform);if(media)params.set('media_type',media);if(status)params.set('status',status);if(days)params.set('days',days);if(brand)params.set('brand',brand);params.set('design_led_only',designLedOnly?'true':'false');if(opts.retry)params.set('retry','1');
+  if(cat)params.set('category',cat);if(country)params.set('country',country);if(platform)params.set('platform',platform);if(media)params.set('media_type',media);if(status)params.set('status',status);if(days)params.set('days',days);if(brand)params.set('brand',brand);params.set('design_led_only',designLedOnly?'true':'false');if(opts.retry)params.set('retry','1');if(opts.refresh)params.set('refresh','1');
   $('resultCount').textContent='Loading creatives…';
   try{
     const res=await fetch('/api/creatives?'+params.toString());
@@ -249,7 +251,7 @@ function setStage(stage){
   $('progressTitle').textContent=idle?'Ready to discover':collecting?'Collecting ads from Meta Ad Library':analyzing?'Analyzing creative quality':stage==='failed'?'Search could not finish':'Search complete';
   $('sessionTitle').textContent=idle?'Choose a category or enter a search':collecting?'Finding relevant creative':analyzing?'Evaluating the creative':stage==='failed'?'Search interrupted':'Your creative results';
   $('progressText').textContent=idle?'Your results and search progress will appear here.':collecting?'Searching the selected market and gathering eligible static image creatives. Analysis begins when collection finishes.':analyzing?'The collector has finished. The model is now evaluating each creative and ranking design-led matches.':stage==='failed'?'The search could not finish. Check the server message and try again.':'The search has finished. Revisit this category to see the results already collected in this session.';
-  $('sessionComplete').classList.toggle('show',['done','stopped'].includes(stage));$('stopBtn').style.display=collecting||analyzing?'inline-block':'none';$('stopBtn').disabled=false;$('stopBtn').textContent='■ Stop search';$('retryBtn').style.display=stage==='failed'?'inline-block':'none';
+  $('sessionComplete').classList.toggle('show',['done','stopped'].includes(stage));$('stopBtn').style.display=collecting||analyzing?'inline-block':'none';$('stopBtn').disabled=false;$('stopBtn').textContent='■ Stop search';$('retryBtn').style.display=stage==='failed'?'inline-block':'none';updateSearchAgain();
   if(idle){$('progressBar').classList.remove('show');resetProgressMetrics()}
 }
 function animateMetric(id,value){const el=$(id);const n=Math.max(0,Number(value)||0);if(el.textContent!==String(n)){el.textContent=n;el.classList.remove('bump');void el.offsetWidth;el.classList.add('bump')}}
@@ -292,7 +294,7 @@ function pollScrapeProgress(category,country){
   },1200);
 }
 
-function applySearchAndRender(){if(!showSavedOnly){$('emptyMsg').innerHTML=`<strong>No creatives to show yet</strong>Start a search to collect ads, or broaden your search phrase. Results will appear here as analysis completes.<br><button onclick="document.getElementById('q').focus()">Edit search phrase</button>`;}let rows=showSavedOnly?savedCreatives:allCreatives;const q=$('q').value.trim().toLowerCase();if(!showSavedOnly&&q&&q!==lastSearchQuery)rows=rows.filter(r=>[r.brand,r.category,r.body,r.title].some(v=>String(v||'').toLowerCase().includes(q)));
+function applySearchAndRender(){updateSearchAgain();if(!showSavedOnly){$('emptyMsg').innerHTML=`<strong>No creatives to show yet</strong>Start a search to collect ads, or broaden your search phrase. Results will appear here as analysis completes.<br><button onclick="document.getElementById('q').focus()">Edit search phrase</button>`;}let rows=showSavedOnly?savedCreatives:allCreatives;const q=$('q').value.trim().toLowerCase();if(!showSavedOnly&&q&&q!==lastSearchQuery)rows=rows.filter(r=>[r.brand,r.category,r.body,r.title].some(v=>String(v||'').toLowerCase().includes(q)));
   if(showSavedOnly&&$('resultCount'))$('resultCount').textContent=rows.length+' saved creative'+(rows.length===1?'':'s');if(sortMode==='longevity')rows=[...rows].sort((a,b)=>(daysRunning(b.first_seen_at)??-1)-(daysRunning(a.first_seen_at)??-1));else rows=[...rows].sort((a,b)=>Number(b.rank_score||0)-Number(a.rank_score||0));renderGrid(rows)}
 function toggleSortMode(){sortMode=sortMode==='rank'?'longevity':'rank';$('fSort').textContent=sortMode==='rank'?'Design score ↕':'Longest running ↕';applySearchAndRender()}
 function imageFailed(img){const fallback=document.createElement('div');fallback.className='image-placeholder';const title=document.createElement('span');title.textContent='Preview unavailable';const note=document.createElement('small');note.textContent='The image link may have expired. Open the ad on Meta to view it.';fallback.append(title,note);img.replaceWith(fallback)}

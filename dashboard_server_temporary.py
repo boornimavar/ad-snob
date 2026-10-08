@@ -268,7 +268,23 @@ def is_stale(category, country, min_rank_score=None):
     return age > timedelta(hours=STALE_AFTER_HOURS)
 
 
-def run_on_demand_scrape(category, country, stop_event):
+def remove_results_not_seen_since(category, country, since):
+    """After a successful "Search again": drop this category's ads the new
+    search didn't find (last seen before it started)."""
+    key, country = normalize_target(category, country)
+    conn = sqlite3.connect(SESSION_DB_PATH)
+    try:
+        removed = conn.execute(
+            "DELETE FROM ads WHERE lower(trim(category)) = ? AND country = ? AND last_seen_at < ?",
+            (key, country, since),
+        ).rowcount
+        conn.commit()
+    finally:
+        conn.close()
+    return removed
+
+
+def run_on_demand_scrape(category, country, stop_event, replace_previous=False):
     target = normalize_target(category, country)
     print(f"[ON-DEMAND] '{category}' / {country or 'any country'} - scraping live, results will stream in...")
 
@@ -312,6 +328,7 @@ def run_on_demand_scrape(category, country, stop_event):
     )
     failure_reason = None
     interrupted_reason = []  # set when Meta cut collection off but some ads were kept
+    started = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
 
     def on_interrupted(exc):
         interrupted_reason.append(classify_failure(exc))
@@ -342,6 +359,12 @@ def run_on_demand_scrape(category, country, stop_event):
                         current["warning"] = NO_ADS_MESSAGE
                     if interrupted_reason:
                         current["warning"] = PARTIAL_MESSAGES[interrupted_reason[0]].format(n=current.get("collected", 0))
+                    # "Search again" replaces the old results, but only after a complete,
+                    # successful search: a failed or cut-short one keeps what was there.
+                    if (replace_previous and current["stage"] == "done" and current.get("collected")
+                            and not interrupted_reason):
+                        removed = remove_results_not_seen_since(category, country, started)
+                        print(f"[ON-DEMAND] '{category}': removed {removed} ads the new search didn't find")
                     _scrape_progress[target] = current
         # The target stays "searched" even when it failed, so refreshing the
         # gallery never silently starts another search. Retrying is explicit.
@@ -372,6 +395,7 @@ def api_creatives():
     expire_old_results()
 
     retry_requested = request.args.get("retry") == "1"
+    refresh_requested = request.args.get("refresh") == "1"  # the "Search again" button
 
     on_demand_triggered = False
     retry_after = None
@@ -380,7 +404,16 @@ def api_creatives():
     if category:
         with _scrapes_lock:
             if target not in _scrapes_in_progress:
-                if target not in _session_searched_targets:
+                if refresh_requested:
+                    # Explicit, so allowed any time except during a failure's cooldown.
+                    with _progress_lock:
+                        wait = retry_wait_seconds(target)
+                        if wait:
+                            retry_after = wait
+                        else:
+                            _failures.pop(target, None)
+                            should_scrape = True
+                elif target not in _session_searched_targets:
                     should_scrape = not has_fresh_results(category, country)
                 elif retry_requested:
                     with _progress_lock:
@@ -402,7 +435,8 @@ def api_creatives():
         with _progress_lock:
             _scrape_progress[target] = {"stage": "starting", "done": 0, "total": 0, "collected": 0}
             _last_activity[target] = time.time()
-        threading.Thread(target=run_on_demand_scrape, args=(category, country, stop_event), daemon=True).start()
+        threading.Thread(target=run_on_demand_scrape, args=(category, country, stop_event, refresh_requested),
+                         daemon=True).start()
         threading.Thread(target=watch_for_stall, args=(target, stop_event), daemon=True).start()
         on_demand_triggered = True
 
