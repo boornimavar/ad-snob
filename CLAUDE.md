@@ -95,7 +95,11 @@ Phase 2 = shared library on Hugging Face (Supabase is blocked by ACT).
   `collector.client`; the vendored zip is untouched): `collector.search()`
   never passed `media_type`, so Meta sent mostly videos; and it stopped at the
   first empty page despite a next cursor (now up to MAX_EMPTY_PAGES=5 in a
-  row are skipped). Expect food/fashion to hit the 500-ad cap now.
+  row are skipped). First real run (food, 2026-10-08): 72 -> 122 ads, but
+  Meta sent 63 empty pages and the search ended on a run of >5. Raised to
+  MAX_EMPTY_PAGES=10 with a `[PAGES]` log line per page plus "Collection
+  ended:" in demo.log, to see where ads run out before going higher (more
+  requests = more rate-limit risk; 1.5.1's 25 helped break searches on 10-01).
 - Failed searches must never auto-restart (makes rate limiting worse).
 - The collector reads Meta's website, not an official API: a terms-of-service
   grey area. Don't suggest proxies or other ways around Meta's blocking.

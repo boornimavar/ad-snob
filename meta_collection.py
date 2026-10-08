@@ -7,9 +7,11 @@ import json
 
 from meta_ads_collector import MetaAdsCollector, FilterConfig
 
-# Consecutive empty pages to step past while Meta still offers a next page
-# (1.5.1 allows 25; each request counts towards Meta's rate limit).
-MAX_EMPTY_PAGES = 5
+# Consecutive empty pages to step past while Meta still offers a next page.
+# Each request counts towards Meta's rate limit; 1.5.1 allowed 25, which helped
+# get searches blocked on 2026-10-01. 5 ended a food search at 122 of ~1,600 ads
+# after 63 empty pages (2026-10-08), so 10 is being tried with per-page logging.
+MAX_EMPTY_PAGES = 10
 
 
 class MediaTypeClient:
@@ -24,6 +26,8 @@ class MediaTypeClient:
 
     Rate-limit and session-expired answers are passed straight back, so the
     collector's own retry handling is unchanged. Everything else is the client's.
+    Every page is noted in the log ("[PAGES] ..."), and `ended_because` says why
+    the last page was the last (empty when the collector stopped by itself).
     """
 
     def __init__(self, client, media_type, between_pages=None, max_empty_pages=MAX_EMPTY_PAGES):
@@ -32,19 +36,40 @@ class MediaTypeClient:
         self._between_pages = between_pages or (lambda: None)
         self._max_empty_pages = max_empty_pages
         self.empty_pages_skipped = 0
+        self.pages_fetched = 0
+        self.ended_because = ""
+
+    @staticmethod
+    def _note(text):
+        print(f"[PAGES] {text}")
 
     def search_ads(self, **kwargs):
         kwargs["media_type"] = self._media_type
         empty_in_a_row = 0
         while True:
             response, next_cursor = self._client.search_ads(**kwargs)
+            self.pages_fetched += 1
+            page = self.pages_fetched
             if response.get("rate_limited") or response.get("session_expired"):
+                self._note(f"page {page}: {'rate-limited' if response.get('rate_limited') else 'session expired'}"
+                           " (the collector retries)")
                 return response, next_cursor
-            if response.get("ads") or not next_cursor:
+            ads = response.get("ads") or []
+            if ads:
+                self._note(f"page {page}: {len(ads)} ads")
+                if not next_cursor:
+                    self.ended_because = "Meta said there were no more pages"
+                return response, next_cursor
+            if not next_cursor:
+                self._note(f"page {page}: empty, and Meta said there were no more pages")
+                self.ended_because = "Meta said there were no more pages"
                 return response, next_cursor
             empty_in_a_row += 1
             if empty_in_a_row > self._max_empty_pages:
-                return response, None  # give up: the collector treats this as the end
+                self._note(f"page {page}: empty ({empty_in_a_row} in a row) - giving up")
+                self.ended_because = f"{empty_in_a_row} empty pages in a row (limit {self._max_empty_pages})"
+                return response, None  # the collector treats this as the end
+            self._note(f"page {page}: empty ({empty_in_a_row} in a row), Meta says there's more - continuing")
             self.empty_pages_skipped += 1
             kwargs["cursor"] = next_cursor
             self._between_pages()
@@ -313,7 +338,8 @@ def search_ads_broad(
             on_interrupted(interruption[0])
 
     print(f"\nAds received:      {ad_count}")
-    print(f"Empty pages skipped: {paging.empty_pages_skipped}")
+    print(f"Pages from Meta:   {paging.pages_fetched} ({paging.empty_pages_skipped} empty pages skipped)")
+    print(f"Collection ended:  {paging.ended_because or 'ad limit reached, search stopped, or Meta cut it off (see above)'}")
     if static_only:
         print("Static filter:    IMAGE + has_video=False; video previews/thumbnails excluded")
     print(f"Image creatives:   {len(records)}")

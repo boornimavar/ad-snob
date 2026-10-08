@@ -225,3 +225,35 @@ def test_real_collector_still_stops_at_the_500_ad_limit(monkeypatch):
 
     assert len(records) == 500
     assert len(client.requests) == 17  # 17 pages of 30 reach 500; no extra requests
+
+
+def test_every_page_and_the_reason_it_ended_are_logged(capsys):
+    pages = {None: ([image_ad(1)], "c1"), "c1": ([], "c2"), "c2": ([], "c3"), "c3": ([], "c4")}
+    paging = meta_collection.MediaTypeClient(FakeMetaClient(pages), "IMAGE", max_empty_pages=2)
+
+    paging.search_ads(cursor=None)
+    paging.search_ads(cursor="c1")
+
+    lines = [l for l in capsys.readouterr().out.splitlines() if l.startswith("[PAGES]")]
+    assert lines == [
+        "[PAGES] page 1: 1 ads",
+        "[PAGES] page 2: empty (1 in a row), Meta says there's more - continuing",
+        "[PAGES] page 3: empty (2 in a row), Meta says there's more - continuing",
+        "[PAGES] page 4: empty (3 in a row) - giving up",
+    ]
+    assert paging.pages_fetched == 4 and paging.empty_pages_skipped == 2
+    assert paging.ended_because == "3 empty pages in a row (limit 2)"
+
+
+def test_last_page_reason_is_recorded():
+    paging = meta_collection.MediaTypeClient(FakeMetaClient({None: ([image_ad(1)], None)}), "IMAGE")
+    paging.search_ads(cursor=None)
+    assert paging.ended_because == "Meta said there were no more pages"
+
+
+def test_ten_empty_pages_in_a_row_are_allowed_by_default():
+    pages = {None: ([], "c1")}
+    pages.update({f"c{n}": ([], f"c{n + 1}") for n in range(1, 10)})
+    pages["c10"] = ([image_ad(1)], None)
+    response, _ = meta_collection.MediaTypeClient(FakeMetaClient(pages), "IMAGE").search_ads(cursor=None)
+    assert [a["ad_archive_id"] for a in response["ads"]] == ["1"]
