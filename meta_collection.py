@@ -7,6 +7,51 @@ import json
 
 from meta_ads_collector import MetaAdsCollector, FilterConfig
 
+# Consecutive empty pages to step past while Meta still offers a next page
+# (1.5.1 allows 25; each request counts towards Meta's rate limit).
+MAX_EMPTY_PAGES = 5
+
+
+class MediaTypeClient:
+    """Sits between collector 1.4.0 and its Meta client, fixing two gaps:
+
+    - collector.search() never passes media_type on, so Meta returned every
+      ad type (mostly videos) and the images were a small share of each page.
+      Here every request asks Meta for `media_type` directly.
+    - the collector stops at the first empty page even when Meta offers a
+      next one. Here up to MAX_EMPTY_PAGES empty pages in a row are stepped
+      past while a next cursor exists; the collector sees the next non-empty page.
+
+    Rate-limit and session-expired answers are passed straight back, so the
+    collector's own retry handling is unchanged. Everything else is the client's.
+    """
+
+    def __init__(self, client, media_type, between_pages=None, max_empty_pages=MAX_EMPTY_PAGES):
+        self._client = client
+        self._media_type = media_type
+        self._between_pages = between_pages or (lambda: None)
+        self._max_empty_pages = max_empty_pages
+        self.empty_pages_skipped = 0
+
+    def search_ads(self, **kwargs):
+        kwargs["media_type"] = self._media_type
+        empty_in_a_row = 0
+        while True:
+            response, next_cursor = self._client.search_ads(**kwargs)
+            if response.get("rate_limited") or response.get("session_expired"):
+                return response, next_cursor
+            if response.get("ads") or not next_cursor:
+                return response, next_cursor
+            empty_in_a_row += 1
+            if empty_in_a_row > self._max_empty_pages:
+                return response, None  # give up: the collector treats this as the end
+            self.empty_pages_skipped += 1
+            kwargs["cursor"] = next_cursor
+            self._between_pages()
+
+    def __getattr__(self, name):
+        return getattr(self._client, name)
+
 
 def classify_failure(exc):
     """Map a collector exception to "rate_limited", "no_response" or "error"."""
@@ -138,6 +183,10 @@ def search_ads_broad(
         has_image=effective_has_image,
         has_video=effective_has_video,
     )
+    # Ask Meta for this media type directly and step past empty pages (see MediaTypeClient).
+    # filter_config still runs on the laptop as a safety net for videos that slip through.
+    paging = MediaTypeClient(collector.client, effective_media_type or "ALL", between_pages=collector._delay)
+    collector.client = paging
 
     print("\n" + "=" * 70)
     print("BROAD META AD SEARCH — APP MODE")
@@ -264,6 +313,7 @@ def search_ads_broad(
             on_interrupted(interruption[0])
 
     print(f"\nAds received:      {ad_count}")
+    print(f"Empty pages skipped: {paging.empty_pages_skipped}")
     if static_only:
         print("Static filter:    IMAGE + has_video=False; video previews/thumbnails excluded")
     print(f"Image creatives:   {len(records)}")

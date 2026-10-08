@@ -89,6 +89,13 @@ Phase 2 = shared library on Hugging Face (Supabase is blocked by ACT).
   as junk words (conf >= 30). A stricter veto (no words >= 80% conf) was
   tried on 2026-10-06: 4 of 14 ads it would bury had real text, so rejected.
   Plan is 👍/👎 retraining instead.
+- Collector 1.4.0 got only a small share of ads (2026-10-08: site shows
+  skincare ~290 / fashion ~1,600 / food ~3,900 image ads; we got 59/29/62).
+  Two gaps, fixed in `meta_collection.MediaTypeClient` (wraps
+  `collector.client`; the vendored zip is untouched): `collector.search()`
+  never passed `media_type`, so Meta sent mostly videos; and it stopped at the
+  first empty page despite a next cursor (now up to MAX_EMPTY_PAGES=5 in a
+  row are skipped). Expect food/fashion to hit the 500-ad cap now.
 - Failed searches must never auto-restart (makes rate limiting worse).
 - The collector reads Meta's website, not an official API: a terms-of-service
   grey area. Don't suggest proxies or other ways around Meta's blocking.
