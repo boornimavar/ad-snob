@@ -89,6 +89,11 @@ Phase 2 = shared library on Hugging Face (Supabase is blocked by ACT).
   as junk words (conf >= 30). A stricter veto (no words >= 80% conf) was
   tried on 2026-10-06: 4 of 14 ads it would bury had real text, so rejected.
   Plan is 👍/👎 retraining instead.
+- **Don't ask Meta for media_type=IMAGE** (tried and rolled back 2026-10-08):
+  Meta's IMAGE excludes carousel / multi-version ads made of images, i.e. the
+  big-brand design-led ones (beauty went from 67 ads, 5.5 pictures/ad, 62%
+  design-led to mostly single-photo small sellers, 5% design-led). We request
+  ALL and keep image ads with the laptop-side FilterConfig, as before.
 - Collector 1.4.0 got only a small share of ads (2026-10-08: site shows
   skincare ~290 / fashion ~1,600 / food ~3,900 image ads; we got 59/29/62).
   Two gaps, fixed in `meta_collection.MediaTypeClient` (wraps

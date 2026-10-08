@@ -206,7 +206,8 @@ def test_real_collector_keeps_going_past_empty_pages(monkeypatch):
     records, client = run_real_collector(monkeypatch, pages)
 
     assert [r["ad_id"] for r in records] == ["1", "2", "3", "4"]
-    assert {r["media_type"] for r in client.requests} == {"IMAGE"}
+    # ALL, not IMAGE: Meta's IMAGE leaves out carousel ads made of images
+    assert {r["media_type"] for r in client.requests} == {"ALL"}
 
 
 def test_real_collector_still_drops_videos_that_slip_through(monkeypatch):
@@ -257,3 +258,14 @@ def test_ten_empty_pages_in_a_row_are_allowed_by_default():
     pages["c10"] = ([image_ad(1)], None)
     response, _ = meta_collection.MediaTypeClient(FakeMetaClient(pages), "IMAGE").search_ads(cursor=None)
     assert [a["ad_archive_id"] for a in response["ads"]] == ["1"]
+
+
+def test_carousel_ads_made_of_images_are_kept(monkeypatch):
+    carousel = {"ad_archive_id": "7", "page_name": "Swiss Beauty", "page_id": "p7",
+                "cards": [{"original_image_url": f"https://img.example/7-{n}.jpg", "body": {"text": "card"}}
+                          for n in range(5)]}
+    pages = {None: ([carousel, video_ad(8)], None)}
+
+    records, _client = run_real_collector(monkeypatch, pages)
+
+    assert [(r["ad_id"], r["creative_index"]) for r in records] == [("7", n) for n in range(5)]

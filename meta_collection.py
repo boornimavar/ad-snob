@@ -13,13 +13,16 @@ from meta_ads_collector import MetaAdsCollector, FilterConfig
 # after 63 empty pages (2026-10-08), so 10 is being tried with per-page logging.
 MAX_EMPTY_PAGES = 10
 
+# What to ask Meta for. Not "IMAGE": see search_ads_broad.
+REQUEST_MEDIA_TYPE = "ALL"
+
 
 class MediaTypeClient:
     """Sits between collector 1.4.0 and its Meta client, fixing two gaps:
 
-    - collector.search() never passes media_type on, so Meta returned every
-      ad type (mostly videos) and the images were a small share of each page.
-      Here every request asks Meta for `media_type` directly.
+    - collector.search() never passes media_type on. Here every request names
+      `media_type` explicitly. (We ask for ALL on purpose: Meta's IMAGE drops
+      carousel ads; see search_ads_broad.)
     - the collector stops at the first empty page even when Meta offers a
       next one. Here up to MAX_EMPTY_PAGES empty pages in a row are stepped
       past while a next cursor exists; the collector sees the next non-empty page.
@@ -208,9 +211,11 @@ def search_ads_broad(
         has_image=effective_has_image,
         has_video=effective_has_video,
     )
-    # Ask Meta for this media type directly and step past empty pages (see MediaTypeClient).
-    # filter_config still runs on the laptop as a safety net for videos that slip through.
-    paging = MediaTypeClient(collector.client, effective_media_type or "ALL", between_pages=collector._delay)
+    # Ask Meta for ALL ad types and pick the image ads here with filter_config. Meta's own
+    # IMAGE type leaves out carousel / multi-version ads made of images - the big-brand,
+    # design-led ones (2026-10-08: beauty fell from 62% to 5% design-led and those brands
+    # vanished). MediaTypeClient still steps past empty pages.
+    paging = MediaTypeClient(collector.client, REQUEST_MEDIA_TYPE, between_pages=collector._delay)
     collector.client = paging
 
     print("\n" + "=" * 70)
