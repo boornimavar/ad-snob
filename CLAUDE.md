@@ -89,22 +89,21 @@ Phase 2 = shared library on Hugging Face (Supabase is blocked by ACT).
   as junk words (conf >= 30). A stricter veto (no words >= 80% conf) was
   tried on 2026-10-06: 4 of 14 ads it would bury had real text, so rejected.
   Plan is 👍/👎 retraining instead.
-- **Don't ask Meta for media_type=IMAGE** (tried and rolled back 2026-10-08):
-  Meta's IMAGE excludes carousel / multi-version ads made of images, i.e. the
-  big-brand design-led ones (beauty went from 67 ads, 5.5 pictures/ad, 62%
-  design-led to mostly single-photo small sellers, 5% design-led). We request
-  ALL and keep image ads with the laptop-side FilterConfig, as before.
-- Collector 1.4.0 got only a small share of ads (2026-10-08: site shows
-  skincare ~290 / fashion ~1,600 / food ~3,900 image ads; we got 59/29/62).
-  Two gaps, fixed in `meta_collection.MediaTypeClient` (wraps
-  `collector.client`; the vendored zip is untouched): `collector.search()`
-  never passed `media_type`, so Meta sent mostly videos; and it stopped at the
-  first empty page despite a next cursor (now up to MAX_EMPTY_PAGES=5 in a
-  row are skipped). First real run (food, 2026-10-08): 72 -> 122 ads, but
-  Meta sent 63 empty pages and the search ended on a run of >5. Raised to
-  MAX_EMPTY_PAGES=10 with a `[PAGES]` log line per page plus "Collection
-  ended:" in demo.log, to see where ads run out before going higher (more
-  requests = more rate-limit risk; 1.5.1's 25 helped break searches on 10-01).
+- **Collection is at the original 1.4.0 behaviour on purpose (reverted
+  2026-10-08).** The site shows far more image ads than we collect (skincare
+  ~290 / food ~1,600-3,900 vs our ~60-120). Two fixes were tried the same day
+  and reverted at the user's request:
+  - Passing media_type=IMAGE to Meta: Meta's IMAGE excludes carousel /
+    multi-version ads made of images (the big-brand, design-led ones). Beauty
+    fell from 62% to 5% design-led. If retried, request ALL.
+  - Stepping past empty pages (cursor still present): Meta then sends tiny
+    pages (~4 ads instead of 30) with 1-3 empty pages between, mostly videos:
+    351 requests in 21 min for 175 image ads. Far too many requests
+    (rate-limit risk), and the 180 s stall watchdog (counts kept ads, not
+    pages) wrongly failed a search as "Meta stopped responding".
+  Any future attempt needs a hard cap on requests per search, a watchdog
+  that counts pages, and one real search before stacking more changes. The
+  dashboard's poll also gives up after 900 polls (~30 min) and hides Stop.
 - Failed searches must never auto-restart (makes rate limiting worse).
 - The collector reads Meta's website, not an official API: a terms-of-service
   grey area. Don't suggest proxies or other ways around Meta's blocking.
@@ -115,7 +114,7 @@ Phase 2 = shared library on Hugging Face (Supabase is blocked by ACT).
   rank_model_v1.pkl, collector 1.4.0 unzipped from the zip into
   site-packages). `design_classifier.pkl` (sklearn 1.6.1) still warns; it is
   diagnostics only.
-- Tests: `.venv\Scripts\python.exe -m pytest tests` (129 pass; they never contact Meta or Supabase).
+- Tests: `.venv\Scripts\python.exe -m pytest tests` (140 pass; they never contact Meta or Supabase).
   Window tests share one Tk root: creating many in one process intermittently
   fails here with "Can't find a usable init.tcl".
 - Don't run real Meta searches yourself; ask the user (it can rate-limit
