@@ -103,7 +103,9 @@ Phase 2 = shared library on Hugging Face (Supabase is blocked by ACT).
     pages) wrongly failed a search as "Meta stopped responding".
   Any future attempt needs a hard cap on requests per search, a watchdog
   that counts pages, and one real search before stacking more changes. The
-  dashboard's poll also gives up after 900 polls (~30 min) and hides Stop.
+  dashboard's poll used to give up after 900 polls (~18 min, hiding Stop);
+  since 2026-10-09 it only gives up after ~3 min of the app not answering
+  (a colleague's slower laptop needs 30+ min for ~390 images).
 - Smart App Control on a colleague's laptop (2026-10-08) blocked scipy's
   `_propack` DLL (pulled in by scikit-learn). Result: the ranking model AND
   CLIP failed (load_models crashed half-way, leaving prompt features None),

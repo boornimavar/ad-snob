@@ -266,7 +266,9 @@ function pollScrapeProgress(category,country){
   if(pollTimer)clearInterval(pollTimer);
   const pollId=++pollGeneration;
   currentScrapeTarget={category,country};$('progressBar').classList.add('show');setStage('starting');showSkeletons();
-  let attempts=0;
+  // Keep following the search however long it takes (slow laptops need 30+ min);
+  // give up only if the app itself stops answering for ~3 minutes.
+  let attempts=0,missedPolls=0;
   const isCurrent=()=>pollId===pollGeneration&&lastSearchQuery.toLowerCase()===String(category||'').toLowerCase()&&$('fCountry').value===country;
   const finish=async(stage,message)=>{
     if(!isCurrent())return;
@@ -275,11 +277,12 @@ function pollScrapeProgress(category,country){
   };
   pollTimer=setInterval(async()=>{
     if(!isCurrent()){clearInterval(pollTimer);pollTimer=null;return}
-    if(++attempts>900){clearInterval(pollTimer);pollTimer=null;$('progressText').textContent='Progress updates timed out. The server may still be working; revisit this category to check results.';$('stopBtn').style.display='none';currentScrapeTarget=null;hideSkeletons();return}
+    attempts++;
+    if(missedPolls>150){clearInterval(pollTimer);pollTimer=null;$('progressText').textContent='Creative Lens stopped answering. If it is still open, revisit this category to check results.';$('stopBtn').style.display='none';currentScrapeTarget=null;hideSkeletons();return}
     try{
       const statusParams=new URLSearchParams({category:category||'',country:country||'',design_led_only:designLedOnly?'true':'false'});
       [['platform','fPlatform'],['media_type','fMedia'],['status','fStatus'],['days','fDate'],['brand','fBrand']].forEach(([key,id])=>{const value=$(id).value;if(value)statusParams.set(key,value)});
-      const res=await fetch('/api/scrape-status?'+statusParams.toString());const p=await res.json();if(!isCurrent())return;
+      const res=await fetch('/api/scrape-status?'+statusParams.toString());const p=await res.json();missedPolls=0;if(!isCurrent())return;
       if(p.stage==='collecting'||p.stage==='starting'){setStage(p.stage);if(Number(p.collected)>0)$('progressText').textContent=`${p.collected} ads collected from Meta so far. Analysis begins when collection finishes.`}
       else if(p.stage==='analyzing'){
         setStage('analyzing');setProgressSnapshot(p);$('analysisFootLeft').textContent='ANALYSIS IN PROGRESS';await refreshResultsQuietly(category,country);
@@ -290,7 +293,7 @@ function pollScrapeProgress(category,country){
       }else if(p.stage==='failed'){
         await finish('failed',describeFailure(p));showError(describeFailure(p));
       }else if(p.stage==='idle'&&attempts>3){clearInterval(pollTimer);pollTimer=null;currentScrapeTarget=null;setStage('idle');hideSkeletons()}
-    }catch(e){/* transient polling issue; retry next interval */}
+    }catch(e){missedPolls++;/* transient polling issue; retry next interval */}
   },1200);
 }
 
