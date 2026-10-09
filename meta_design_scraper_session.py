@@ -1057,7 +1057,7 @@ def apply_candidate_ranking(scores, is_probable_video_frame=False):
 
 def browse_master_db(category=None, country=None, platform=None, media_type=None,
                       status=None, brand=None, min_rank_score=None, min_clip_design=None, days=None,
-                      db_path=None):
+                      db_path=None, include_duplicates=False):
     """Query the ACCUMULATED master database - built up across every
     --broad-search run you've ever done - rather than any single run's
     results. This is what "search shouldn't be capped by max-results"
@@ -1079,7 +1079,10 @@ def browse_master_db(category=None, country=None, platform=None, media_type=None
         return []
     conn = sqlite3.connect(database_path)
     conn.row_factory = sqlite3.Row
-    query = "SELECT " + ", ".join(CSV_COLUMNS) + " FROM ads WHERE is_creative_representative=1"
+    # include_duplicates: also the versions merged into another ad by the
+    # end-of-search duplicate check (the dashboard's "Show duplicates" switch).
+    query = "SELECT " + ", ".join(CSV_COLUMNS) + " FROM ads WHERE " + (
+        "1=1" if include_duplicates else "is_creative_representative=1")
     params = []
     if category:
         query += " AND category LIKE ?"; params.append(f"%{category}%")

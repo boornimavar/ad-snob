@@ -36,6 +36,19 @@ def test_design_led_only_false_includes_low_scores(client, app_env):
     assert len(data["rows"]) == 1
 
 
+
+def test_show_duplicates_also_returns_merged_versions(client, app_env):
+    insert_rows(app_env.SESSION_DB_PATH, [
+        make_row(image_hash="aaaa000000000001", is_creative_representative=1),
+        make_row(image_hash="aaaa000000000002", is_creative_representative=0),
+    ])
+
+    hidden = client.get("/api/creatives").get_json()
+    shown = client.get("/api/creatives?show_duplicates=true").get_json()
+
+    assert [r["image_hash"] for r in hidden["rows"]] == ["aaaa000000000001"]
+    assert sorted(r["image_hash"] for r in shown["rows"]) == ["aaaa000000000001", "aaaa000000000002"]
+
 def test_new_category_starts_one_search_and_streams_results(client, fake_pipeline):
     fake_pipeline["rows"] = [make_row(image_hash="bbbb000000000001")]
 
