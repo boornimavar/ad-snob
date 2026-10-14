@@ -114,6 +114,11 @@ Phase 2 = shared library on Hugging Face (Supabase is blocked by ACT).
   with numpy (`linear_model.py`; identical scores), the build excludes
   sklearn, and load_models only marks CLIP loaded once it fully succeeds.
   `--retrain` still uses sklearn and writes the JSON too.
+- Duplicate check (2026-10-14): SIFT-only matches (7-13 inliers, no OCR
+  overlap) chained 17 different skincare ads into one group, hiding them and
+  inflating group_ad_count (false Likely winner). Now ads that both have text
+  that doesn't match are never merged on SIFT alone. Likely winner = running
+  90+ days AND design in 3+ separate ads (30 days alone tagged ~80%).
 - Failed searches must never auto-restart (makes rate limiting worse).
 - The collector reads Meta's website, not an official API: a terms-of-service
   grey area. Don't suggest proxies or other ways around Meta's blocking.
