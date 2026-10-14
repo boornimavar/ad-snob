@@ -184,3 +184,23 @@ def test_start_date_of_reads_meta_times():
     assert scraper.start_date_of("2026-08-20 07:00:00+00:00") == "2026-08-20"
     assert scraper.start_date_of(None) == ""
     assert scraper.start_date_of("unknown") == ""
+
+
+def test_ads_with_different_text_are_not_merged_on_a_weak_visual_match(monkeypatch):
+    # SIFT says "similar" (a handful of shared keypoints), but both ads have
+    # plenty of text and it doesn't match: that is two different ads.
+    monkeypatch.setattr(scraper, "sift_same_creative", lambda a, b: (True, 9))
+    a = analyzed("a.jpg", "aaaa0000aaaa0000", ocr="glow serum vitamin c brighter skin", crops=["0f0f0f0f0f0f0f0f"])
+    b = analyzed("b.jpg", "bbbb1111bbbb1111", ocr="hair fall analysis free get thick", crops=["f0f0f0f0f0f0f0f0"])
+
+    same, reason = scraper.same_underlying_creative(a, b)
+
+    assert same is False, reason
+
+
+def test_text_poor_photos_can_still_match_visually(monkeypatch):
+    monkeypatch.setattr(scraper, "sift_same_creative", lambda a, b: (True, 30))
+    a = analyzed("a.jpg", "aaaa0000aaaa0000", ocr="", crops=["0f0f0f0f0f0f0f0f"])
+    b = analyzed("b.jpg", "bbbb1111bbbb1111", ocr="sale", crops=["f0f0f0f0f0f0f0f0"])
+
+    assert scraper.same_underlying_creative(a, b)[0] is True

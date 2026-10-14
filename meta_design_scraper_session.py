@@ -1352,6 +1352,14 @@ def same_underlying_creative(a, b):
     if visual_distance <= 6:
         return True, f"crop pHash {visual_distance} (visual match, low/no OCR overlap)"
 
+    # Both ads have real text and it doesn't match: different text means a
+    # different ad. SIFT alone is too weak here - 7-13 shared keypoints merged
+    # 17 different skincare ads (Dot & Key, Dermatouch, Vedix...) into one
+    # group on 2026-10-14, hiding them as "duplicates". The SIFT-only path is
+    # kept for text-poor images (photos with little or no OCR text).
+    if len(text_a) >= 3 and len(text_b) >= 3:
+        return False, f"OCR {text_similarity:.2f} (different text) + crop pHash {visual_distance}"
+
     matched, match_count = sift_same_creative(
         a.get("_sift_descriptors"), b.get("_sift_descriptors")
     )

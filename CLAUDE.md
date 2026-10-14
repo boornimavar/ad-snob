@@ -124,7 +124,7 @@ Phase 2 = shared library on Hugging Face (Supabase is blocked by ACT).
   rank_model_v1.pkl, collector 1.4.0 unzipped from the zip into
   site-packages). `design_classifier.pkl` (sklearn 1.6.1) still warns; it is
   diagnostics only.
-- Tests: `.venv\Scripts\python.exe -m pytest tests` (146 pass; they never contact Meta or Supabase).
+- Tests: `.venv\Scripts\python.exe -m pytest tests` (149 pass; they never contact Meta or Supabase).
   Window tests share one Tk root: creating many in one process intermittently
   fails here with "Can't find a usable init.tcl".
 - Don't run real Meta searches yourself; ask the user (it can rate-limit

@@ -434,3 +434,18 @@ def test_your_searches_are_remembered_once_and_can_be_removed(client, app_env):
 
     after = client.delete("/api/my-searches?query=JEWELLERY").get_json()
     assert after["searches"] == ["pet food"]
+
+
+def test_versions_lists_the_ad_then_the_rest_of_its_design_group(client, app_env):
+    insert_rows(app_env.SESSION_DB_PATH, [
+        make_row(image_hash="aaaa000000000001", creative_group_id=7, is_creative_representative=1),
+        make_row(image_hash="aaaa000000000002", creative_group_id=7, is_creative_representative=0),
+        make_row(image_hash="aaaa000000000003", creative_group_id=8),
+        # Same group number from a different search must not be mixed in.
+        make_row(image_hash="aaaa000000000004", creative_group_id=7, category="fashion"),
+    ])
+
+    rows = client.get("/api/versions/aaaa000000000001").get_json()["rows"]
+
+    assert [r["image_hash"] for r in rows] == ["aaaa000000000001", "aaaa000000000002"]
+    assert client.get("/api/versions/unknown").get_json()["rows"] == []

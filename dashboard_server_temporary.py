@@ -571,6 +571,33 @@ def api_categories():
     return jsonify(cats)
 
 
+@app.route("/api/versions/<image_hash>")
+def api_versions(image_hash):
+    """Every version of the design this ad belongs to (the ad itself first),
+    for the detail panel. Versions are the ads the duplicate check grouped
+    with it in the same search."""
+    if not SESSION_DB_PATH.exists():
+        return jsonify({"rows": []})
+    conn = sqlite3.connect(SESSION_DB_PATH)
+    conn.row_factory = sqlite3.Row
+    try:
+        ad = conn.execute("SELECT * FROM ads WHERE image_hash = ?", (image_hash,)).fetchone()
+        if ad is None:
+            return jsonify({"rows": []})
+        rows = [ad]
+        if ad["creative_group_id"] is not None:
+            rows += conn.execute(
+                "SELECT * FROM ads WHERE creative_group_id = ? AND category = ? AND country = ? "
+                "AND image_hash != ? ORDER BY is_creative_representative DESC, rank_score DESC",
+                (ad["creative_group_id"], ad["category"], ad["country"], image_hash),
+            ).fetchall()
+    finally:
+        conn.close()
+    fields = ("image_hash", "image_url", "ad_id", "brand", "ad_start_date", "is_creative_representative",
+              "rank_score", "aspect_ratio")
+    return jsonify({"rows": [{f: row[f] for f in fields} for row in rows]})
+
+
 @app.route("/api/saved")
 def api_saved():
     """Return saved creatives from persistent snapshots, even after session reset."""
