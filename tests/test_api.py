@@ -422,3 +422,15 @@ def test_search_again_does_not_start_a_second_search(client, fake_pipeline):
 def test_dashboard_has_the_search_again_button(client):
     page = client.get("/").get_data(as_text=True)
     assert 'id="searchAgainBtn"' in page and "refresh" in page
+
+
+def test_your_searches_are_remembered_once_and_can_be_removed(client, app_env):
+    app_env.MY_SEARCHES_PATH.unlink(missing_ok=True)
+
+    client.post("/api/my-searches", json={"query": "  Jewellery  "})
+    client.post("/api/my-searches", json={"query": "jewellery"})  # same search, different case
+    client.post("/api/my-searches", json={"query": "pet food"})
+    assert client.get("/api/my-searches").get_json()["searches"] == ["Jewellery", "pet food"]
+
+    after = client.delete("/api/my-searches?query=JEWELLERY").get_json()
+    assert after["searches"] == ["pet food"]

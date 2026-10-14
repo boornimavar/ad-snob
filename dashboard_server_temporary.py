@@ -515,6 +515,42 @@ def _note_page_contact():
     last_page_contact = time.time()
 
 
+MY_SEARCHES_PATH = BASE_DIR / "my_searches.json"
+_my_searches_lock = threading.Lock()
+
+
+def load_my_searches():
+    """Phrases typed into the search box, shown under "Your searches" in the
+    side list. Kept in the data folder (not the browser) because the app can
+    open on a different port, and each port has its own browser storage."""
+    try:
+        searches = json.loads(MY_SEARCHES_PATH.read_text(encoding="utf-8"))
+        return [s for s in searches if isinstance(s, str) and s.strip()]
+    except (OSError, ValueError):
+        return []
+
+
+def save_my_searches(searches):
+    MY_SEARCHES_PATH.write_text(json.dumps(searches, ensure_ascii=False), encoding="utf-8")
+
+
+@app.route("/api/my-searches", methods=["GET", "POST", "DELETE"])
+def api_my_searches():
+    """GET the list, POST {"query": ...} to add one, DELETE ?query=... to remove one."""
+    with _my_searches_lock:
+        searches = load_my_searches()
+        if request.method == "POST":
+            query = " ".join(str((request.get_json(silent=True) or {}).get("query") or "").split())[:80]
+            if query and query.casefold() not in {s.casefold() for s in searches}:
+                searches.append(query)
+                save_my_searches(searches)
+        elif request.method == "DELETE":
+            query = (request.args.get("query") or "").strip().casefold()
+            searches = [s for s in searches if s.casefold() != query]
+            save_my_searches(searches)
+    return jsonify({"searches": searches})
+
+
 @app.route("/api/health")
 def api_health():
     """Lets demo.py find a running app; the page also calls it every minute
