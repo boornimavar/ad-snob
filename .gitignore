@@ -32,3 +32,6 @@ demo.log
 # App build output (build_app.py)
 build/
 dist/
+
+# Local Claude Code settings
+.claude/
