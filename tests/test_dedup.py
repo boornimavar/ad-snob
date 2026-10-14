@@ -162,3 +162,25 @@ def test_final_merge_still_keeps_different_prices_apart(monkeypatch):
     reps, _dups, _groups = scraper.deduplicate_analyzed_rows([a, b, z])
 
     assert sorted(r["image_file"] for r in reps) == ["a.jpg", "z.jpg"]
+
+
+def test_groups_get_earliest_start_date_and_number_of_ads():
+    rows = [
+        {"creative_group_id": 1, "ad_id": "a", "ad_start_date": "2026-09-01", "is_creative_representative": 1},
+        {"creative_group_id": 1, "ad_id": "b", "ad_start_date": "2026-07-15", "is_creative_representative": 0},
+        {"creative_group_id": 1, "ad_id": "b", "ad_start_date": "", "is_creative_representative": 0},
+        {"creative_group_id": 2, "ad_id": "c", "ad_start_date": "", "is_creative_representative": 1},
+    ]
+
+    scraper.summarize_groups(rows)
+
+    assert rows[0]["ad_start_date"] == "2026-07-15"  # the design has run since its earliest version
+    assert rows[1]["ad_start_date"] == "2026-07-15"
+    assert [r["group_ad_count"] for r in rows] == [2, 2, 2, 1]  # two separate ads use design 1
+    assert rows[3]["ad_start_date"] == ""
+
+
+def test_start_date_of_reads_meta_times():
+    assert scraper.start_date_of("2026-08-20 07:00:00+00:00") == "2026-08-20"
+    assert scraper.start_date_of(None) == ""
+    assert scraper.start_date_of("unknown") == ""

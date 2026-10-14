@@ -1215,6 +1215,11 @@ def create_database(
         "media_type": "TEXT",
         "first_seen_at": "TEXT",
         "last_seen_at": "TEXT",
+        # When Meta says the ad started running (YYYY-MM-DD); for a group's
+        # representative, the earliest start among all its versions.
+        "ad_start_date": "TEXT",
+        # How many separate ads (ad IDs) use this design.
+        "group_ad_count": "INTEGER DEFAULT 1",
     }
     for column, sql_type in migrations.items():
         if column not in existing_columns:
@@ -1276,9 +1281,10 @@ def insert_ad(conn, data):
             filter_reason, image_width, image_height, aspect_ratio, frame_variant_hash, ocr_fingerprint,
             creative_group_id, is_creative_representative, creative_variant_of,
             creative_variant_count, representative_reason, rank_score, human_label, background_uniformity,
-            search_query, country, platform, media_type, first_seen_at, last_seen_at
+            search_query, country, platform, media_type, first_seen_at, last_seen_at,
+            ad_start_date, group_ad_count
         )
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     """, (
         data["category"], data["brand"], data["page_name"], data["page_id"],
         data["ad_id"], data["creative_index"], data["image_file"],
@@ -1294,6 +1300,7 @@ def insert_ad(conn, data):
         data.get("creative_variant_of", ""), data.get("creative_variant_count", 0),
         data.get("representative_reason", ""), data.get("rank_score"), data.get("human_label", ""), data.get("background_uniformity"),
         data.get("search_query", ""), data.get("country", ""), data.get("platform", ""), data.get("media_type", "IMAGE"), now, now,
+        data.get("ad_start_date", ""), data.get("group_ad_count", 1),
     ))
 
 
@@ -1374,6 +1381,31 @@ def is_better_frame(candidate, current):
     if cp != rp:
         return cp > rp
     return float(candidate.get("creative_score") or 0) > float(current.get("creative_score") or 0)
+
+
+def start_date_of(value):
+    """Meta's delivery start time (datetime or text) as YYYY-MM-DD, or "" if unknown."""
+    text = str(value or "").strip()
+    if re.match(r"\d{4}-\d{2}-\d{2}", text):
+        return text[:10]
+    return ""
+
+
+def summarize_groups(rows):
+    """After duplicate grouping: give each design's representative the earliest
+    start date among its versions, and record on every row how many separate
+    ads (ad IDs) use the design. Long-running designs used in many ads are the
+    ones a brand keeps paying for - the "likely winner" signal."""
+    groups = {}
+    for row in rows:
+        groups.setdefault(row.get("creative_group_id") or row.get("image_hash"), []).append(row)
+    for members in groups.values():
+        ad_count = len({m.get("ad_id") for m in members if m.get("ad_id")}) or 1
+        dates = [m["ad_start_date"] for m in members if m.get("ad_start_date")]
+        for m in members:
+            m["group_ad_count"] = ad_count
+            if dates and m.get("is_creative_representative", 1):
+                m["ad_start_date"] = min(dates)
 
 
 def deduplicate_analyzed_rows(analyzed_rows):
@@ -1647,6 +1679,8 @@ def run_broad_search_pipeline(args, progress_callback=None, stop_check=None, db_
                 "country": (args.search_country or "").upper(),
                 "platform": (args.platforms or "ALL").upper(),
                 "media_type": "IMAGE",
+                "ad_start_date": start_date_of(record.get("delivery_start_time")),
+                "group_ad_count": 1,
                 **scores,
             })
             batch_rows.append(analyzed_rows[-1])
@@ -1678,6 +1712,7 @@ def run_broad_search_pipeline(args, progress_callback=None, stop_check=None, db_
 
     representatives, duplicate_count, groups = deduplicate_analyzed_rows(analyzed_rows)
     unique_count = len(analyzed_rows) - duplicate_count
+    summarize_groups(analyzed_rows)
 
     print(f"Unique creatives:    {unique_count}")
     print(f"Duplicate variants: {duplicate_count}")
@@ -1702,10 +1737,12 @@ def run_broad_search_pipeline(args, progress_callback=None, stop_check=None, db_
     for row in analyzed_rows:
         live_conn.execute(
             "UPDATE ads SET is_creative_representative=?, duplicate=?, creative_group_id=?, "
-            "creative_variant_of=?, creative_variant_count=?, representative_reason=? WHERE image_hash=?",
+            "creative_variant_of=?, creative_variant_count=?, representative_reason=?, "
+            "ad_start_date=?, group_ad_count=? WHERE image_hash=?",
             (row.get("is_creative_representative", 1), row.get("duplicate", 0), row.get("creative_group_id"),
              row.get("creative_variant_of", ""), row.get("creative_variant_count", 0),
-             row.get("representative_reason", ""), row.get("image_hash", "")),
+             row.get("representative_reason", ""), row.get("ad_start_date", ""),
+             row.get("group_ad_count", 1), row.get("image_hash", "")),
         )
     live_conn.commit()
     live_conn.close()
@@ -1787,6 +1824,7 @@ CSV_COLUMNS = [
     "creative_group_id", "is_creative_representative", "creative_variant_of",
     "creative_variant_count", "representative_reason", "rank_score", "human_label",
     "search_query", "country", "platform", "media_type", "first_seen_at", "last_seen_at",
+    "ad_start_date", "group_ad_count",
 ]
 
 
