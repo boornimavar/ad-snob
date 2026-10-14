@@ -10,7 +10,7 @@ QUERY = "category=skincare&country=IN"
 def test_index_serves_dashboard(client):
     res = client.get("/")
     assert res.status_code == 200
-    assert b"Creative Lens" in res.data
+    assert b"Ad Snob" in res.data
 
 
 def test_creatives_without_category_reads_session_db_only(client, app_env, fake_pipeline):

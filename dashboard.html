@@ -3,10 +3,10 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Creative Lens — Ad Intelligence</title>
+<title>Ad Snob — only the good ads</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-<link href="https://fonts.googleapis.com/css2?family=DM+Mono:wght@400;500&family=DM+Sans:wght@400;500;600;700&family=Playfair+Display:ital,wght@0,500;0,600;1,500&display=swap" rel="stylesheet">
+<link href="https://fonts.googleapis.com/css2?family=DM+Mono:wght@400;500&family=DM+Sans:wght@400;500;600;700&family=Playfair+Display:ital,wght@0,500;0,600;1,500&family=Nunito:wght@500;600;700;800;900&family=Caveat:wght@600;700&display=swap" rel="stylesheet">
 <style>
 :root{--bg:#14141b;--panel:#1c1b24;--panel-2:#24232d;--panel-3:#2c2a36;--line:#373541;--ink:#f0eee8;--muted:#a5a2b0;--dim:#777482;--plum:#6b536b;--lime:#d8ff67;--lime-soft:#313a25;--danger:#ff8278;--sans:'DM Sans',Arial,sans-serif;--serif:'Playfair Display',Georgia,serif;--mono:'DM Mono',monospace}
 *{box-sizing:border-box}html{scroll-behavior:smooth}body{margin:0;background:var(--bg);color:var(--ink);font-family:var(--sans);-webkit-font-smoothing:antialiased}button,input,select{font:inherit}button,select{cursor:pointer}button:focus-visible,input:focus-visible,select:focus-visible{outline:2px solid var(--lime);outline-offset:3px}button{transition:background .18s,border-color .18s,color .18s,transform .18s}button:active{transform:translateY(1px)}
@@ -119,12 +119,92 @@ body{font-size:15px;line-height:1.55;letter-spacing:0}
 .ad-copy{font-size:13px;line-height:1.55;color:var(--ink);white-space:pre-wrap;max-height:160px;overflow-y:auto;background:var(--panel-2);border-radius:10px;padding:10px 12px}.ad-copy strong{display:block;margin-bottom:4px}.detail-actions{display:flex;gap:8px;flex-wrap:wrap;margin-top:auto;position:sticky;bottom:0;padding:12px 0 20px;background:var(--panel);border-top:1px solid var(--line)}.detail-actions a,.detail-actions button{display:inline-flex;align-items:center;gap:6px;text-decoration:none;font-size:13px;padding:9px 13px;border-radius:9px;border:1px solid var(--line);background:var(--panel-2);color:var(--ink)}.detail-actions .primary{background:var(--lime);border-color:var(--lime);color:#18191a;font-weight:600}
 .score-help{font-size:11px;color:var(--dim);line-height:1.5}
 @media(max-width:800px){.detail-backdrop{padding:0;align-items:stretch}.detail{max-height:none;grid-template-rows:auto;grid-template-columns:1fr;border-radius:0;overflow-y:auto}.detail-media .main-img img{max-height:55vh}.detail-info{overflow:visible}}
+
+/* ===== Ad Snob theme (2026-10-14): light, playful, chunky. Look only. ===== */
+:root{--bg:#fbf6ec;--panel:#ffffff;--panel-2:#f7f1e4;--panel-3:#efe6d3;--line:#1f2a44;--ink:#1f2a44;--muted:#55607a;--dim:#8a8f9e;--plum:#ffd23f;
+  --lime:#e5533d;--lime-soft:#ffe3dc;--danger:#d9342b;--sky:#4db3ec;--coral:#ff6f61;--sun:#ffd23f;--mint:#2fbf8a;
+  --sans:'Nunito','DM Sans',Arial,sans-serif;--serif:'Nunito','DM Sans',Arial,sans-serif;--hand:'Caveat',cursive;--chunk:3px 3px 0 #1f2a44;--chunk-sm:2px 2px 0 #1f2a44}
+body{background:var(--bg);color:var(--ink)}
+button:focus-visible,input:focus-visible,select:focus-visible{outline:3px solid var(--sky)}
+/* Sidebar */
+.sidebar{background:#fffdf8;border-right:2.5px solid var(--line)}
+.brand-symbol{background:var(--sun);border:2.5px solid var(--line);box-shadow:var(--chunk-sm);font-size:20px;border-radius:12px}
+.brand-name{font:900 26px/1 var(--sans);letter-spacing:-.5px}.brand-caption{font:600 11px var(--hand);font-size:15px;color:var(--muted);letter-spacing:0;text-transform:none}
+.side-label,.category-group-label{color:var(--muted);font:800 10.5px var(--sans);letter-spacing:.09em}
+.nav-btn,.category-btn{color:var(--ink);font-weight:700;border:2px solid transparent}
+.nav-btn:hover,.category-btn:hover{background:var(--panel-2);color:var(--ink)}
+.nav-btn.active,.category-btn.active{background:var(--sun);border-color:var(--line);color:var(--ink);box-shadow:var(--chunk-sm)}
+.coming-soon{border-color:var(--dim);color:var(--muted)}.side-divider{background:#e4dccb}
+.remove-search{color:var(--muted)!important}
+.design-filter{background:var(--panel)!important;border:2px solid var(--line)!important;box-shadow:var(--chunk-sm);color:var(--ink)!important}
+/* Top + hero */
+.top-note{font:700 18px var(--hand);letter-spacing:0;color:var(--muted)}
+.icon-button{background:var(--panel);border:2px solid var(--line);color:var(--ink)}.avatar{background:var(--coral);border:2px solid var(--line);color:#fff;font-weight:900}
+.hero{background:var(--sky);margin:14px 36px 18px;border:2.5px solid var(--line);border-radius:22px;box-shadow:5px 5px 0 #1f2a44;padding:26px 30px 24px;color:#fff;min-height:0}
+.hero:after{content:'✦ ✧';position:absolute;right:6%;top:14px;font:900 46px/1 var(--sans);letter-spacing:10px;color:var(--sun);-webkit-text-stroke:2px #1f2a44;opacity:1;transform:rotate(8deg)}
+.creative-media img{background:#f1ebde}.image-placeholder{background:#f1ebde;color:var(--muted)}.image-placeholder:before{background:var(--sun);color:var(--ink);border:2px solid var(--line)}.image-placeholder small{color:var(--dim)}
+.card-hover-actions{background:linear-gradient(transparent,#1f2a44cc)}.viewlink{background:#fff;color:var(--ink);border:2px solid var(--line);font-weight:800}
+.hero-kicker{font:800 12px var(--sans);letter-spacing:.12em;color:var(--sun);text-shadow:1px 1px 0 #1f2a44}
+.hero h1{font:900 clamp(34px,3.6vw,52px)/1.05 var(--sans);letter-spacing:-1px;color:#fff;text-shadow:3px 3px 0 #1f2a44}
+.hero h1 em{font-style:normal;color:var(--sun)}
+.hero p{color:#f2f9ff;font-size:15px;font-weight:600}
+.hero-doodle{position:absolute;right:7%;bottom:14px;font:700 22px var(--hand);color:#fff;transform:rotate(-4deg);text-shadow:1px 1px 0 #1f2a4466}
+/* Search + filters: chunky, pressable */
+.search-box{background:var(--panel);border:2.5px solid var(--line);border-radius:14px;box-shadow:var(--chunk)}
+.search-icon{color:var(--ink)}.search-box input{color:var(--ink);font-size:15px;font-weight:600}.search-box input::placeholder{color:var(--dim)}
+.search-btn{background:var(--coral);color:#fff;border:2.5px solid var(--line);box-shadow:var(--chunk-sm);font-weight:900;font-size:14px;border-radius:10px}
+.search-btn:hover{background:#ff8679}.search-btn:active,.filter-btn:active,.detail-actions a:active,.detail-actions button:active{transform:translate(2px,2px);box-shadow:none}
+.country-select,.pill-select,.filter-btn,.sort-select,#fBrand{background:var(--panel);border:2px solid var(--line);color:var(--ink);font-weight:700;box-shadow:var(--chunk-sm)}
+.pill-select option,.pill-select optgroup{background:#fff;color:var(--ink)}#fBrand::placeholder{color:var(--dim)}
+.filter-btn.active,.filter-btn#fDesign.active{background:var(--sun);color:var(--ink);border-color:var(--line)}
+#fWinners.active{background:#ffd8b0}#fDupes.active{background:#d8ecff}
+.status-hint,.sort-wrap{color:var(--muted)}
+/* Live search panel */
+#progressBar{background:var(--panel);border:2.5px solid var(--line);box-shadow:5px 5px 0 #1f2a44}
+.session-head{border-bottom:2px solid #e4dccb}.session-title{font:900 20px var(--sans)}.session-kicker{color:var(--muted)}
+.stage-pill{border:2px solid var(--line);color:var(--muted);font-weight:700}.stage-pill.active{background:var(--sun);color:var(--ink);border-color:var(--line)}.stage-pill.complete{background:#d6f5e8;color:#0f6b49;border-color:var(--line)}
+.stage-icon{background:var(--sun);border:2px solid var(--line);color:var(--ink)}.stage-text p{color:var(--muted)}
+.metric{background:var(--panel-2)!important;border:2px solid var(--line)!important}.metric-value{color:var(--ink)!important;font-family:var(--sans)!important;font-weight:900}
+.stop-btn{background:#ffe3dc;border:2px solid var(--line);color:var(--danger);font-weight:800}
+/* Results + cards */
+.result-summary strong,#resultCount{font-weight:900;color:var(--ink)}.live-badge{background:#d6f5e8;color:#0f6b49;border:2px solid var(--line);font-weight:800}.live-badge .dot{background:var(--mint)}
+.view-toggle{color:var(--muted)}.view-toggle.active{background:var(--sun);border:2px solid var(--line);color:var(--ink)}
+.view-actions button:not(.view-toggle){background:var(--panel);border:2px solid var(--line);color:var(--ink);font-weight:800;box-shadow:var(--chunk-sm)}
+.card{background:var(--panel);border:2.5px solid var(--line);border-radius:14px;box-shadow:var(--chunk)}
+.card:hover{transform:translate(-2px,-2px);box-shadow:5px 5px 0 #1f2a44;border-color:var(--line)}
+.creative-media{background:#f1ebde;border-bottom:2.5px solid var(--line)}
+.brand{color:var(--ink);font-weight:800;font-size:12.5px}.cat{color:var(--muted)}
+.brand-mark{background:var(--sun);color:var(--ink);border:2px solid var(--line);font-weight:900}.platform-mark{background:var(--panel-2);color:var(--ink);border:1.5px solid var(--line)}
+.card-meta{color:var(--muted);font-weight:700}.quality-dot{background:var(--mint)}.rank-score{color:var(--coral);font-weight:800}
+.winner-tag{background:#ffe1bf;color:#8a3b00;border:1.5px solid var(--line)}.new-tag{background:#d8ecff;color:#0b4a7a}
+.save-float{background:#fff;color:var(--ink);border:2px solid var(--line)}.save-float:hover,.save-float.saved{background:var(--sun);color:var(--ink);border-color:var(--line)}
+.empty{background:var(--panel);border:2.5px dashed var(--line);color:var(--muted)}.empty strong{font:900 24px var(--sans);color:var(--ink)}
+.empty button{background:var(--coral);color:#fff;border:2px solid var(--line);font-weight:800;box-shadow:var(--chunk-sm)}
+.error-banner{background:#ffe3dc;border:2px solid var(--line);color:#8a1d15;font-weight:700}
+.skel-card{background:var(--panel);border:2px solid #e4dccb}.skel-thumb{background:linear-gradient(110deg,#f1ebde 25%,#fbf6ec 38%,#f1ebde 55%);background-size:200% 100%}.skel-line{background:#ece4d3}
+/* Detail panel */
+.detail-backdrop{background:#1f2a44b3}
+.detail{background:var(--panel);border:3px solid var(--line);box-shadow:8px 8px 0 #1f2a44;border-radius:20px}
+.detail-media{background:#f1ebde;border-right:2.5px solid var(--line)}.versions-label{color:var(--muted);font-weight:700}
+.versions button{background:#fff;border:2px solid var(--line)}.versions button.active{border-color:var(--coral);box-shadow:var(--chunk-sm)}
+.detail-close{background:#fff;border:2px solid var(--line);color:var(--ink);font-weight:900}
+.detail-brand{font:900 26px var(--sans)}.detail-sub{color:var(--muted)}
+.fact{background:var(--panel-2);border:2px solid var(--line)}.fact-label{color:var(--muted);font-weight:800}.fact-value{font-weight:800}.fact-value.score{color:var(--coral);font-family:var(--sans)}
+.detail-section h4{color:var(--muted);font-weight:800}.notice-chips span{background:#d8ecff;color:#0b3a60;border:1.5px solid var(--line);font-weight:700}
+.ad-copy{background:var(--panel-2);border:2px solid #e4dccb;color:var(--ink)}
+.detail-actions{background:var(--panel);border-top:2px solid #e4dccb}
+.detail-actions a,.detail-actions button{background:#fff;border:2px solid var(--line);color:var(--ink);font-weight:800;box-shadow:var(--chunk-sm)}
+.detail-actions .primary{background:var(--coral);border-color:var(--line);color:#fff}
+.score-help{color:var(--muted)}
+@media(max-width:1250px){.hero{margin-left:25px;margin-right:25px}}
+@media(max-width:900px){.hero-doodle,.hero:after{display:none}.hero{margin-left:20px;margin-right:20px}}
+@media(max-width:600px){.hero{margin:12px 13px;padding:18px}.hero h1{font-size:32px}}
 </style>
 </head>
 <body>
 <div class="app-shell">
 <aside class="sidebar">
-  <div class="brand-lockup"><span class="brand-symbol">✳</span><div><div class="brand-name">Creative Lens</div><div class="brand-caption">META AD LIBRARY · CREATIVE INTELLIGENCE</div></div></div>
+  <div class="brand-lockup"><span class="brand-symbol" aria-hidden="true">🧐</span><div><div class="brand-name">Ad Snob</div><div class="brand-caption">Judging ads so you don't have to</div></div></div>
   <nav class="side-nav" aria-label="Main navigation">
     <button class="nav-btn active" id="exploreBtn" onclick="showExplore()"><span class="nav-icon">⌂</span><span class="nav-label">Explore</span></button>
     <button class="nav-btn" id="viewSavedBtn" onclick="toggleSavedView()"><span class="nav-icon">♧</span><span class="nav-label">Saved ads</span></button>
@@ -157,8 +237,8 @@ body{font-size:15px;line-height:1.55;letter-spacing:0}
   <div class="sidebar-bottom"><div class="design-filter"><div class="design-filter-head"><span>✳</span> Design-led filter</div><p>Prioritise image creatives with stronger design signals.</p><div class="switch-row"><span id="designFilterLabel">Enabled</span><button id="designSwitch" class="switch active" aria-label="Toggle design-led filter" onclick="toggleDesignLed()"></button></div></div></div>
 </aside>
 <main class="main">
-  <div class="topbar"><span class="top-note">A WORKSPACE FOR CREATIVE RESEARCH</span><button class="icon-button" title="Toggle contrast" onclick="document.body.classList.toggle('contrast-mode')">◐</button><div class="avatar" aria-label="Creative Lens">CL</div></div>
-  <section class="hero"><div class="hero-kicker">Creative research, without the guesswork</div><h1>Find ads worth <em>looking at.</em></h1><p>Explore real Meta ad creatives by industry, discover visual directions, and save references for your next campaign.</p></section>
+  <div class="topbar"><span class="top-note">Only the good stuff. Probably.</span><button class="icon-button" title="Toggle contrast" onclick="document.body.classList.toggle('contrast-mode')">◐</button><div class="avatar" aria-label="Ad Snob">AS</div></div>
+  <section class="hero"><div class="hero-kicker">Creative research, without the guesswork</div><h1>Find ads worth <em>looking at.</em></h1><p>Real Meta ads from India, judged by an AI with very high standards. Pick an industry, or type anything.</p><div class="hero-doodle" aria-hidden="true">psst… try “jewellery” ↓</div></section>
   <section class="search-area" aria-label="Search and filters">
     <div class="search-row"><div class="search-box"><span class="search-icon">⌕</span><input type="text" id="q" placeholder="Search an industry, brand, or campaign theme…" aria-label="Search ads"><button class="search-btn" id="searchBtn" onclick="submitSearch()">Search ↗</button></div><select class="country-select" id="fCountry" aria-label="Ad market"><option value="IN" selected>⌖ &nbsp; India market</option><option value="GB">United Kingdom</option><option value="US">United States</option><option value="">All available markets</option></select></div>
     <div class="filter-row">
@@ -193,7 +273,7 @@ body{font-size:15px;line-height:1.55;letter-spacing:0}
   </section>
   <section class="content">
     <div class="content-heading"><div class="result-summary"><strong id="resultCount">Choose an industry to begin</strong><span class="live-badge"><span class="dot"></span> Session results</span></div><div class="view-actions"><button class="view-toggle active" title="Masonry gallery">▦</button><button class="view-toggle" title="List view" onclick="alert('List view is not available yet.')">☷</button><button class="filter-btn" id="searchAgainBtn" onclick="searchAgain()" title="Search Meta again for this category, replacing these results once it succeeds" style="display:none">↻ Search again</button><button class="filter-btn" onclick="downloadSelected()">↓ <span class="download-label">Download selected</span></button></div></div>
-    <div class="skeleton-grid" id="skeletonGrid"></div><div class="grid" id="grid"></div><div class="empty" id="emptyMsg"><strong>No creatives to show yet</strong>Start a search to collect ads, or broaden your search phrase. Results will appear here as analysis completes.<br><button onclick="document.getElementById('q').focus()">Edit search phrase</button></div>
+    <div class="skeleton-grid" id="skeletonGrid"></div><div class="grid" id="grid"></div><div class="empty" id="emptyMsg"><strong>Nothing here yet. The snob is waiting… 🧐</strong>Pick an industry or type a search. Ads appear here as they get judged.<br><button onclick="document.getElementById('q').focus()">Edit search phrase</button></div>
   </section>
 </main>
 </div>
@@ -303,7 +383,7 @@ function pollScrapeProgress(category,country){
   pollTimer=setInterval(async()=>{
     if(!isCurrent()){clearInterval(pollTimer);pollTimer=null;return}
     attempts++;
-    if(missedPolls>150){clearInterval(pollTimer);pollTimer=null;$('progressText').textContent='Creative Lens stopped answering. If it is still open, revisit this category to check results.';$('stopBtn').style.display='none';currentScrapeTarget=null;hideSkeletons();return}
+    if(missedPolls>150){clearInterval(pollTimer);pollTimer=null;$('progressText').textContent='Ad Snob stopped answering. If it is still open, revisit this category to check results.';$('stopBtn').style.display='none';currentScrapeTarget=null;hideSkeletons();return}
     try{
       const statusParams=new URLSearchParams({category:category||'',country:country||'',design_led_only:designLedOnly?'true':'false',show_duplicates:showDuplicates?'true':'false'});
       [['platform','fPlatform'],['media_type','fMedia'],['status','fStatus'],['days','fDate'],['brand','fBrand']].forEach(([key,id])=>{const value=$(id).value;if(value)statusParams.set(key,value)});
@@ -322,7 +402,7 @@ function pollScrapeProgress(category,country){
   },1200);
 }
 
-function applySearchAndRender(){updateSearchAgain();if(!showSavedOnly){$('emptyMsg').innerHTML=`<strong>No creatives to show yet</strong>Start a search to collect ads, or broaden your search phrase. Results will appear here as analysis completes.<br><button onclick="document.getElementById('q').focus()">Edit search phrase</button>`;}let rows=showSavedOnly?savedCreatives:allCreatives;const q=$('q').value.trim().toLowerCase();if(!showSavedOnly&&q&&q!==lastSearchQuery)rows=rows.filter(r=>[r.brand,r.category,r.body,r.title].some(v=>String(v||'').toLowerCase().includes(q)));
+function applySearchAndRender(){updateSearchAgain();if(!showSavedOnly){$('emptyMsg').innerHTML=`<strong>Nothing here yet. The snob is waiting… 🧐</strong>Pick an industry or type a search. Ads appear here as they get judged.<br><button onclick="document.getElementById('q').focus()">Edit search phrase</button>`;}let rows=showSavedOnly?savedCreatives:allCreatives;const q=$('q').value.trim().toLowerCase();if(!showSavedOnly&&q&&q!==lastSearchQuery)rows=rows.filter(r=>[r.brand,r.category,r.body,r.title].some(v=>String(v||'').toLowerCase().includes(q)));
   if(showSavedOnly&&$('resultCount'))$('resultCount').textContent=rows.length+' saved creative'+(rows.length===1?'':'s');if(winnersOnly)rows=rows.filter(isLikelyWinner);if(sortMode==='longevity')rows=[...rows].sort((a,b)=>(daysRunning(b.ad_start_date)??-1)-(daysRunning(a.ad_start_date)??-1));else rows=[...rows].sort((a,b)=>Number(b.rank_score||0)-Number(a.rank_score||0));renderGrid(rows)}
 function toggleSortMode(){sortMode=sortMode==='rank'?'longevity':'rank';$('fSort').textContent=sortMode==='rank'?'Design score ↕':'Longest running ↕';applySearchAndRender()}
 function imageFailed(img){const fallback=document.createElement('div');fallback.className='image-placeholder';const title=document.createElement('span');title.textContent='Preview unavailable';const note=document.createElement('small');note.textContent='The image link may have expired. Open the ad on Meta to view it.';fallback.append(title,note);img.replaceWith(fallback)}
