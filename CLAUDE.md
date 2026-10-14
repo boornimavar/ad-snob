@@ -131,4 +131,5 @@ Phase 2 = shared library on Hugging Face (Supabase is blocked by ACT).
   their network). The user may have their own analysis_api running on port
   8000; run test services on another port and don't stop theirs.
 - The old prototype repo `C:\indian-meta-ad-scraper` stays untouched.
-- No GitHub remote yet - ask before creating one.
+- GitHub: private repo https://github.com/boornimavar/ad-snob (origin, pushed
+  2026-10-14). Commit messages carry no Claude co-author line (user's choice).
