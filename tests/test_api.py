@@ -449,3 +449,16 @@ def test_versions_lists_the_ad_then_the_rest_of_its_design_group(client, app_env
 
     assert [r["image_hash"] for r in rows] == ["aaaa000000000001", "aaaa000000000002"]
     assert client.get("/api/versions/unknown").get_json()["rows"] == []
+
+
+def test_off_topic_ads_are_hidden_unless_asked_for(client, app_env):
+    insert_rows(app_env.SESSION_DB_PATH, [
+        make_row(image_hash="aaaa000000000001", off_topic=0),
+        make_row(image_hash="aaaa000000000002", off_topic=1),
+    ])
+
+    hidden = client.get("/api/creatives").get_json()["rows"]
+    shown = client.get("/api/creatives?show_off_topic=true").get_json()["rows"]
+
+    assert [r["image_hash"] for r in hidden] == ["aaaa000000000001"]
+    assert len(shown) == 2

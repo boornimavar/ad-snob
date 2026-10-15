@@ -20,6 +20,7 @@ from PIL import Image, ImageStat
 import imagehash
 import joblib
 from linear_model import LinearModel, export as export_linear_model
+import topic_check
 import torch
 import clip
 import pytesseract
@@ -312,6 +313,14 @@ def _legacy_probability(embeddings):
     if isinstance(_ml_model, LinearModel):
         return _ml_model.probability(embeddings)
     return _ml_model.predict_proba(embeddings)[:, 1]
+
+
+def encode_texts(texts):
+    """CLIP text embeddings (L2-normalised numpy rows), for topic_check."""
+    with torch.no_grad():
+        features = _clip_model.encode_text(clip.tokenize(texts).to(_clip_device)).float()
+        features /= features.norm(dim=-1, keepdim=True)
+    return features.cpu().numpy()
 
 
 def predict_ml(image: Image.Image):
@@ -1057,7 +1066,7 @@ def apply_candidate_ranking(scores, is_probable_video_frame=False):
 
 def browse_master_db(category=None, country=None, platform=None, media_type=None,
                       status=None, brand=None, min_rank_score=None, min_clip_design=None, days=None,
-                      db_path=None, include_duplicates=False):
+                      db_path=None, include_duplicates=False, include_off_topic=False):
     """Query the ACCUMULATED master database - built up across every
     --broad-search run you've ever done - rather than any single run's
     results. This is what "search shouldn't be capped by max-results"
@@ -1083,6 +1092,8 @@ def browse_master_db(category=None, country=None, platform=None, media_type=None
     # end-of-search duplicate check (the dashboard's "Show duplicates" switch).
     query = "SELECT " + ", ".join(CSV_COLUMNS) + " FROM ads WHERE " + (
         "1=1" if include_duplicates else "is_creative_representative=1")
+    if not include_off_topic:  # ads not about the search (topic_check.py); the "Show off-topic" switch
+        query += " AND COALESCE(off_topic, 0) = 0"
     params = []
     if category:
         query += " AND category LIKE ?"; params.append(f"%{category}%")
@@ -1220,6 +1231,9 @@ def create_database(
         "ad_start_date": "TEXT",
         # How many separate ads (ad IDs) use this design.
         "group_ad_count": "INTEGER DEFAULT 1",
+        # Is the ad about what was searched? (topic_check.py)
+        "topic_score": "REAL",
+        "off_topic": "INTEGER DEFAULT 0",
     }
     for column, sql_type in migrations.items():
         if column not in existing_columns:
@@ -1282,9 +1296,9 @@ def insert_ad(conn, data):
             creative_group_id, is_creative_representative, creative_variant_of,
             creative_variant_count, representative_reason, rank_score, human_label, background_uniformity,
             search_query, country, platform, media_type, first_seen_at, last_seen_at,
-            ad_start_date, group_ad_count
+            ad_start_date, group_ad_count, topic_score, off_topic
         )
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     """, (
         data["category"], data["brand"], data["page_name"], data["page_id"],
         data["ad_id"], data["creative_index"], data["image_file"],
@@ -1301,6 +1315,7 @@ def insert_ad(conn, data):
         data.get("representative_reason", ""), data.get("rank_score"), data.get("human_label", ""), data.get("background_uniformity"),
         data.get("search_query", ""), data.get("country", ""), data.get("platform", ""), data.get("media_type", "IMAGE"), now, now,
         data.get("ad_start_date", ""), data.get("group_ad_count", 1),
+        data.get("topic_score"), data.get("off_topic", 0),
     ))
 
 
@@ -1721,6 +1736,11 @@ def run_broad_search_pipeline(args, progress_callback=None, stop_check=None, db_
     representatives, duplicate_count, groups = deduplicate_analyzed_rows(analyzed_rows)
     unique_count = len(analyzed_rows) - duplicate_count
     summarize_groups(analyzed_rows)
+    try:
+        topic_check.check_topics(analyzed_rows, args.search_query, encode_texts)
+        print(f"Off-topic:           {sum(r.get('off_topic', 0) for r in analyzed_rows)} (hidden unless asked for)")
+    except Exception as exc:  # never lose a search over the topic check
+        print(f"[TOPIC] Check skipped: {exc}")
 
     print(f"Unique creatives:    {unique_count}")
     print(f"Duplicate variants: {duplicate_count}")
@@ -1746,11 +1766,12 @@ def run_broad_search_pipeline(args, progress_callback=None, stop_check=None, db_
         live_conn.execute(
             "UPDATE ads SET is_creative_representative=?, duplicate=?, creative_group_id=?, "
             "creative_variant_of=?, creative_variant_count=?, representative_reason=?, "
-            "ad_start_date=?, group_ad_count=? WHERE image_hash=?",
+            "ad_start_date=?, group_ad_count=?, topic_score=?, off_topic=? WHERE image_hash=?",
             (row.get("is_creative_representative", 1), row.get("duplicate", 0), row.get("creative_group_id"),
              row.get("creative_variant_of", ""), row.get("creative_variant_count", 0),
              row.get("representative_reason", ""), row.get("ad_start_date", ""),
-             row.get("group_ad_count", 1), row.get("image_hash", "")),
+             row.get("group_ad_count", 1), row.get("topic_score"), row.get("off_topic", 0),
+             row.get("image_hash", "")),
         )
     live_conn.commit()
     live_conn.close()
@@ -1832,7 +1853,7 @@ CSV_COLUMNS = [
     "creative_group_id", "is_creative_representative", "creative_variant_of",
     "creative_variant_count", "representative_reason", "rank_score", "human_label",
     "search_query", "country", "platform", "media_type", "first_seen_at", "last_seen_at",
-    "ad_start_date", "group_ad_count",
+    "ad_start_date", "group_ad_count", "topic_score", "off_topic",
 ]
 
 

@@ -393,6 +393,7 @@ def api_creatives():
 
     min_rank_score = 0.5 if design_led_only else None
     include_duplicates = request.args.get("show_duplicates", "false").lower() == "true"
+    include_off_topic = request.args.get("show_off_topic", "false").lower() == "true"
     expire_old_results()
 
     retry_requested = request.args.get("retry") == "1"
@@ -445,7 +446,7 @@ def api_creatives():
         category=category, country=country, platform=platform,
         media_type=media_type, status=status, brand=brand,
         min_rank_score=min_rank_score, days=days, db_path=SESSION_DB_PATH,
-        include_duplicates=include_duplicates,
+        include_duplicates=include_duplicates, include_off_topic=include_off_topic,
     )
 
     conn = get_saved_conn()
@@ -490,6 +491,7 @@ def api_scrape_status():
         days=request.args.get("days") or None,
         db_path=SESSION_DB_PATH,
         include_duplicates=request.args.get("show_duplicates", "false").lower() == "true",
+        include_off_topic=request.args.get("show_off_topic", "false").lower() == "true",
     )
     progress["matches"] = len(matches)
     progress.setdefault("collected", progress.get("total", 0) if progress.get("stage") in ("analyzing", "done", "stopped") else 0)

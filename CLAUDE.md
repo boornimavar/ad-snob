@@ -119,6 +119,13 @@ Phase 2 = shared library on Hugging Face (Supabase is blocked by ACT).
   inflating group_ad_count (false Likely winner). Now ads that both have text
   that doesn't match are never merged on SIFT alone. Likely winner = running
   90+ days AND design in 3+ separate ads (30 days alone tagged ~80%).
+- Off-topic ads (2026-10-15): categories are keyword searches, so "food"
+  returned a jeweller's hiring poster ("food & accommodation" in the perks),
+  hotels, concerts, courses. `topic_check.py` flags an ad off-topic when CLIP
+  gives the search < 0.05 against other ad topics (same-family topics
+  excluded) AND the advertiser's title/body doesn't mention the search word.
+  On real food/skincare/haircare searches every hidden ad was off-topic
+  (food: 24 of 73). Hidden by default; "Show off-topic" shows them.
 - Failed searches must never auto-restart (makes rate limiting worse).
 - The collector reads Meta's website, not an official API: a terms-of-service
   grey area. Don't suggest proxies or other ways around Meta's blocking.
@@ -129,7 +136,7 @@ Phase 2 = shared library on Hugging Face (Supabase is blocked by ACT).
   rank_model_v1.pkl, collector 1.4.0 unzipped from the zip into
   site-packages). `design_classifier.pkl` (sklearn 1.6.1) still warns; it is
   diagnostics only.
-- Tests: `.venv\Scripts\python.exe -m pytest tests` (149 pass; they never contact Meta or Supabase).
+- Tests: `.venv\Scripts\python.exe -m pytest tests` (154 pass; they never contact Meta or Supabase).
   Window tests share one Tk root: creating many in one process intermittently
   fails here with "Can't find a usable init.tcl".
 - Don't run real Meta searches yourself; ask the user (it can rate-limit
