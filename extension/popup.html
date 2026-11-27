@@ -1,0 +1,31 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Ad Snob helper</title>
+<style>
+  body { width: 380px; margin: 0; padding: 14px; font: 14px/1.5 system-ui, sans-serif; color: #1b1b1b; }
+  h1 { font-size: 16px; margin: 0 0 4px; }
+  p { margin: 0 0 10px; color: #555; font-size: 12px; }
+  form { display: flex; gap: 6px; }
+  input { flex: 1; padding: 7px 9px; border: 1px solid #ccc; border-radius: 7px; font: inherit; }
+  button { padding: 7px 12px; border: 0; border-radius: 7px; background: #1b1b1b; color: #fff; font: inherit; cursor: pointer; }
+  button:disabled { opacity: .5; cursor: default; }
+  #status { margin: 10px 0 6px; font-weight: 600; }
+  #status.bad { color: #a3222f; } #status.ok { color: #0a6b3d; }
+  #grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 6px; }
+  #grid img { width: 100%; aspect-ratio: 1; object-fit: cover; border-radius: 6px; background: #eee; }
+  details { margin-top: 10px; font-size: 12px; color: #444; }
+  pre { white-space: pre-wrap; background: #f3f3f0; padding: 8px; border-radius: 6px; margin: 6px 0 0; }
+</style>
+</head>
+<body>
+  <h1>Ad Snob helper · test</h1>
+  <p>Runs one small search on Meta's Ad Library from this browser, logged out.</p>
+  <form id="form"><input id="q" value="skincare" aria-label="Search word"><button id="go" type="submit">Search</button></form>
+  <div id="status"></div>
+  <div id="grid"></div>
+  <details><summary>Diagnostics (send these to Claude)</summary><pre id="diag">No search yet.</pre></details>
+  <script src="popup.js"></script>
+</body>
+</html>
