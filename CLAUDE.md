@@ -74,6 +74,24 @@ the team's Google Drive (not public HF: Phase 2 builds would hold a key).
 Phase 2 = shared library on Hugging Face (Supabase is blocked by ACT).
 4. **Improvements**: 👍/👎 labels in the gallery feeding `--retrain`.
 
+## Website version (started 2026-11-27, branch `web-extension`)
+- Render re-test (2026-11-27, `render_test/`, branch `render-test`): a search
+  from Render's server still got 0 ads, so servers stay blocked.
+- So the website never searches from a server: `website/` is a static page
+  (Render Static Site, live at https://ad-snob.onrender.com, publish dir
+  `website`, branch `web-extension`, noindex) and the **Chrome add-on**
+  (`extension/`, loaded unpacked) searches Meta from the visitor's own
+  browser, LOGGED OUT (`credentials: "omit"`, own cookie jar via webRequest +
+  declarativeNetRequest rules matching only the add-on's own requests).
+  `extension/meta.js` ports the 1.4.0 collector's search (homepage tokens,
+  then AdLibrarySearchPaginationQuery); `node extension/meta.test.mjs`.
+  `bridge.js` (content script on the site + localhost:8099) relays page
+  postMessage searches. First real test: skincare -> 10 ads, 6 with images.
+- Office Wi-Fi blocks Facebook; use a hotspot or home Wi-Fi.
+- Plan: step 2 more pages per search, step 3 AI in the browser (CLIP,
+  OCR, rank_model_v1.json), step 4 duplicates/likely winner/off-topic/detail
+  panel/saved ads, step 5 sharing with teammates.
+
 ## Hard-won facts
 - `meta_ads_collector` must be **1.4.0** (from `meta_ads_collector_source.zip`).
   1.5.1 raises on rate limiting and pages through empty results; that broke all
