@@ -35,3 +35,6 @@ dist/
 
 # Local Claude Code settings
 .claude/
+
+# Render test build unpacks the collector zip here
+/meta_ads_collector/

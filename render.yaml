@@ -1,0 +1,15 @@
+# Render test service (render_test/app.py): checks whether Meta's Ad Library
+# answers a small search from Render's servers. Free plan, no AI.
+services:
+  - type: web
+    name: ad-snob-render-test
+    runtime: python
+    plan: free
+    # The Meta collector must be version 1.4.0, shipped as a zip of its files.
+    buildCommand: >-
+      pip install -r render_test/requirements.txt &&
+      python -c "import zipfile; zipfile.ZipFile('meta_ads_collector_source.zip').extractall('meta_ads_collector')"
+    startCommand: gunicorn --timeout 180 --workers 1 --bind 0.0.0.0:$PORT render_test.app:app
+    envVars:
+      - key: PYTHON_VERSION
+        value: 3.12.7
