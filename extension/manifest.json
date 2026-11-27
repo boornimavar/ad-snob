@@ -1,16 +1,35 @@
 {
   "manifest_version": 3,
   "name": "Ad Snob helper",
-  "version": "0.3.0",
+  "version": "0.4.0",
   "description": "Searches Meta's public Ad Library from your own browser, logged out, for the Ad Snob website.",
-  "permissions": ["declarativeNetRequest", "webRequest", "storage"],
-  "host_permissions": ["https://www.facebook.com/*"],
-  "background": {"service_worker": "background.js", "type": "module"},
-  "action": {"default_title": "Ad Snob helper", "default_popup": "popup.html"},
+  "permissions": [
+    "declarativeNetRequest",
+    "webRequest",
+    "storage"
+  ],
+  "host_permissions": [
+    "https://www.facebook.com/*",
+    "https://*.fbcdn.net/*"
+  ],
+  "background": {
+    "service_worker": "background.js",
+    "type": "module"
+  },
+  "action": {
+    "default_title": "Ad Snob helper",
+    "default_popup": "popup.html"
+  },
   "content_scripts": [
     {
-      "matches": ["https://ad-snob.onrender.com/*", "http://127.0.0.1:8099/*", "http://localhost:8099/*"],
-      "js": ["bridge.js"],
+      "matches": [
+        "https://ad-snob.onrender.com/*",
+        "http://127.0.0.1:8099/*",
+        "http://localhost:8099/*"
+      ],
+      "js": [
+        "bridge.js"
+      ],
       "run_at": "document_start"
     }
   ]

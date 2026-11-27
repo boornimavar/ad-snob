@@ -88,9 +88,21 @@ Phase 2 = shared library on Hugging Face (Supabase is blocked by ACT).
   `bridge.js` (content script on the site + localhost:8099) relays page
   postMessage searches. First real test: skincare -> 10 ads, 6 with images.
 - Office Wi-Fi blocks Facebook; use a hotspot or home Wi-Fi.
-- Plan: step 2 more pages per search, step 3 AI in the browser (CLIP,
-  OCR, rank_model_v1.json), step 4 duplicates/likely winner/off-topic/detail
-  panel/saved ads, step 5 sharing with teammates.
+- Step 2 (paging like the 1.4.0 collector) and step 3 (AI in the browser)
+  done. `website/ai/`: resize.js ports Pillow BICUBIC + CLIP's resize/crop
+  (Python half-to-even rounding!); pixels.js the OCR variants + complexity
+  (pixel-identical to Pillow 12.3); score.js the measurements + rank_score;
+  clip-worker.js runs Xenova/clip-vit-base-patch32 **fp16 on WASM** (exact;
+  q8 drifted 5 pts, WebGPU 0.8 pts); analyzer.js adds tesseract.js 5.1.1 with
+  the app's own eng.traineddata (`ai/tessdata`) and 2-4 workers;
+  clip_text.json is exported by `website/ai/export_clip_text.py`. Chrome's
+  JPEG decode = Pillow's. On 50 saved ads in Chrome vs the app: CLIP
+  identical, design score identical in 28/50, avg 0.56 pts, worst 8.8 pts
+  (OCR word counts differ: native Tesseract 5.4 vs wasm, every tesseract.js
+  version reads the same), design-led verdict changed 0/50; 1.8 s/picture.
+  `website/_test/` (git-ignored) is the in-browser comparison page.
+- Next: step 4 duplicates/likely winner/off-topic/detail panel/saved ads,
+  step 5 sharing with teammates.
 
 ## Hard-won facts
 - `meta_ads_collector` must be **1.4.0** (from `meta_ads_collector_source.zip`).

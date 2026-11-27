@@ -35,3 +35,6 @@ dist/
 
 # Local Claude Code settings
 .claude/
+
+# Local in-browser scoring test (thumbnails + app answers), never published
+/website/_test/

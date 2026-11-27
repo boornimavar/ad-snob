@@ -141,8 +141,25 @@ chrome.runtime.onConnect.addListener((port) => {
   });
 });
 
+/** An ad picture from Facebook's picture servers, as base64 (websites can't read them directly). */
+async function fetchImage(url) {
+  let host;
+  try { host = new URL(url).hostname; } catch { return { ok: false, error: "Not a link." }; }
+  if (!(host === "fbcdn.net" || host.endsWith(".fbcdn.net"))) return { ok: false, error: "Only Facebook picture links are allowed." };
+  const response = await fetch(url, { credentials: "omit", cache: "force-cache" });
+  if (!response.ok) return { ok: false, error: `Picture link answered HTTP ${response.status} (Meta's picture links expire after a few days).` };
+  const bytes = new Uint8Array(await response.arrayBuffer());
+  let binary = "";
+  for (let i = 0; i < bytes.length; i += 0x8000) binary += String.fromCharCode(...bytes.subarray(i, i + 0x8000));
+  return { ok: true, type: response.headers.get("content-type") || "image/jpeg", base64: btoa(binary) };
+}
+
 // The pop-up's quick test: one small search (up to 30 image ads).
 chrome.runtime.onMessage.addListener((message, _sender, reply) => {
+  if (message?.type === "image") {
+    fetchImage(String(message.url || "")).then(reply).catch((err) => reply({ ok: false, error: String(err.message || err) }));
+    return true;
+  }
   if (message?.type !== "search") return false;
   if (busy) { reply({ ok: false, error: "A search is already running." }); return false; }
   busy = true;

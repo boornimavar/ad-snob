@@ -9,9 +9,20 @@ document.documentElement.dataset.adsnobHelper = chrome.runtime.getManifest().ver
 const ports = new Map();
 const send = (message) => window.postMessage(message, window.location.origin);
 
-window.addEventListener("message", (event) => {
+window.addEventListener("message", async (event) => {
   if (event.source !== window) return;
   const { type, id } = event.data || {};
+  if (type === "adsnob:image") { // page <- {type: "adsnob:image-result", id, ok, imageType, base64, error}
+    let result;
+    try {
+      result = await chrome.runtime.sendMessage({ type: "image", url: event.data.url });
+    } catch (err) {
+      result = { ok: false, error: String(err.message || err) };
+    }
+    result ||= { ok: false, error: "No answer from the helper." };
+    send({ type: "adsnob:image-result", id, ok: result.ok, imageType: result.type, base64: result.base64, error: result.error });
+    return;
+  }
   if (type === "adsnob:stop") {
     ports.get(id)?.disconnect();
     ports.delete(id);
