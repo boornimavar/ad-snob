@@ -155,6 +155,10 @@ function makeCard(item) {
   tag.className = "tag-slot";
   body.append(brand, tag, meta, meta2);
   card.append(img, body);
+  card.tabIndex = 0;
+  card.title = "Click for details";
+  card.addEventListener("click", (e) => { if (!e.target.closest("a,button,input")) openDetail(item); });
+  card.addEventListener("keydown", (e) => { if (e.key === "Enter" && e.target === card) openDetail(item); });
   item.card = card;
   return card;
 }
@@ -196,6 +200,7 @@ function updateCard(item) {
     }
   }
   applyFilter(item);
+  if (item === detailItem) renderDetailInfo(item);
 }
 
 function applyFilter(item) {
@@ -259,6 +264,95 @@ function updateProgress() {
   }
 }
 
+// ---------- detail panel (same content as the app's) ----------
+const escapeHtml = (s) => String(s ?? "").replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
+function formatDate(iso) {
+  if (!iso) return "";
+  const d = new Date(`${iso}T00:00:00`);
+  return isNaN(d) ? iso : d.toLocaleDateString("en-IN", { day: "numeric", month: "short", year: "numeric" });
+}
+// Plain-English notes from the AI's scores, with the app's cut-offs.
+function aiNotes(r) {
+  const n = [], num = (k) => Number(r[k]);
+  const words = num("ocr_word_count");
+  if (num("clip_design_score") >= 0.545) n.push("Polished, designed look");
+  if (num("broad_graphic_prob") >= 0.37) n.push("Strong graphic layout");
+  if (num("broad_photo_prob") >= 0.24) n.push("Photo-led");
+  if (num("broad_product_prob") >= 0.52) n.push("Product-focused");
+  if (words > 0 && words <= 8) n.push("Minimal text"); else if (words > 55) n.push("Text-heavy"); else if (words > 8) n.push("Headline + supporting text");
+  if (num("ocr_text_density") >= 0.10) n.push("Big, bold text");
+  if (r.visual_complexity != null && r.visual_complexity !== "") {
+    if (num("visual_complexity") <= 0.54) n.push("Clean, simple"); else if (num("visual_complexity") >= 0.82) n.push("Busy, detailed");
+  }
+  return n;
+}
+let detailItem = null;
+function openDetail(item) {
+  detailItem = item;
+  $("detailImg").src = item.url;
+  $("detailImg").alt = `Ad by ${item.ad.page || "unknown advertiser"}`;
+  renderDetailInfo(item);
+  // every version of this design (this one first, then the group's lead, then by score), like the app
+  const versions = item.row ? [item, ...creatives.filter((c) => c !== item && c.row?.creative_group_id === item.row.creative_group_id)
+    .sort((a, b) => (b.row.is_creative_representative - a.row.is_creative_representative) || (b.record.rank_score - a.record.rank_score))] : [item];
+  $("versionsLabel").textContent = versions.length > 1 ? `${versions.length} versions of this design` : "";
+  $("detailVersions").replaceChildren(...(versions.length > 1 ? versions.map((v, i) => {
+    const b = document.createElement("button");
+    b.type = "button";
+    b.className = i === 0 ? "active" : "";
+    b.title = `${v.ad.page || ""}${v.row?.ad_start_date ? ` · since ${formatDate(v.row.ad_start_date)}` : ""}`;
+    const img = document.createElement("img");
+    img.src = v.url; img.alt = `Version ${i + 1}`; img.loading = "lazy"; img.referrerPolicy = "no-referrer";
+    b.append(img);
+    b.addEventListener("click", () => {
+      $("detailImg").src = v.url;
+      $("detailVersions").querySelectorAll("button").forEach((x) => x.classList.toggle("active", x === b));
+    });
+    return b;
+  }) : []));
+  $("detailBackdrop").classList.add("show");
+  document.body.style.overflow = "hidden";
+  $("detailClose").focus();
+}
+function renderDetailInfo(item) {
+  const r = { ...(item.record || {}), ...(item.row || {}) };
+  const text = item.ad.texts?.[item.index] || item.ad;
+  const scored = item.state === "scored";
+  const days = daysRunning(r.ad_start_date || startDateOf(item.ad.start));
+  const ads = Number(r.group_ad_count || 1);
+  const score = Math.round(Number(r.rank_score || 0) * 100);
+  const adLink = item.ad.id ? `https://www.facebook.com/ads/library/?id=${encodeURIComponent(item.ad.id)}` : "";
+  const notes = scored ? aiNotes(r) : [];
+  const tags = [isLikelyWinner(r) ? '<span class="winner-tag">🔥 Likely winner</span>' : "", isNewAd(r) ? '<span class="winner-tag new-tag">🆕 New</span>' : "",
+    r.is_creative_representative === 0 ? '<span class="winner-tag new-tag">Duplicate</span>' : "", r.off_topic === 1 ? '<span class="winner-tag new-tag">Off-topic</span>' : ""].join("");
+  const copy = [text.title ? `<strong>${escapeHtml(text.title)}</strong>` : "", escapeHtml(text.body || "")].join("");
+  const since = r.ad_start_date || startDateOf(item.ad.start);
+  $("detailInfo").innerHTML = `<div><div class="detail-brand" id="detailBrand">${escapeHtml(item.ad.page || "Unknown advertiser")}</div><div class="detail-sub">${escapeHtml(search?.query || "")}</div></div>
+  ${tags ? `<div class="detail-tags">${tags}</div>` : ""}
+  <div class="detail-facts">
+    <div class="fact"><div class="fact-label">Design score</div><div class="fact-value score">${scored ? `${score}%` : item.state === "failed" ? "—" : "Scoring…"}</div></div>
+    <div class="fact"><div class="fact-label">Verdict</div><div class="fact-value">${scored ? (score >= 50 ? "Design-led" : "Not design-led") : "—"}</div></div>
+    <div class="fact"><div class="fact-label">Running since</div><div class="fact-value">${since ? formatDate(since) : "Unknown"}</div>${days !== null ? `<div class="detail-sub">${runningLabel(days).replace("Running ", "")}</div>` : ""}</div>
+    <div class="fact"><div class="fact-label">Used in</div><div class="fact-value">${ads} ad${ads === 1 ? "" : "s"}</div><div class="detail-sub">separate ads with this design</div></div>
+  </div>
+  ${notes.length ? `<div class="detail-section"><h4>What the AI noticed</h4><div class="notice-chips">${notes.map((x) => `<span>${x}</span>`).join("")}</div></div>` : ""}
+  ${copy ? `<div class="detail-section"><h4>Ad text</h4><div class="ad-copy">${copy}</div></div>` : ""}
+  ${text.cta ? `<div class="detail-section"><h4>Button</h4><div class="notice-chips"><span>${escapeHtml(text.cta)}</span></div></div>` : ""}
+  <div class="score-help">Design score = how designed the ad looks. Likely winner = running 3+ months in 3+ ads, so the brand keeps paying for it (a clue, not proof).</div>
+  <div class="detail-actions">${adLink ? `<a class="primary" href="${adLink}" target="_blank" rel="noopener">View on Meta ↗</a>` : ""}<a href="${escapeHtml(item.url)}" target="_blank" rel="noopener noreferrer">Open full image ↗</a></div>`;
+}
+function closeDetail() {
+  if (!detailItem) return;
+  const card = detailItem.card;
+  $("detailBackdrop").classList.remove("show");
+  document.body.style.overflow = "";
+  detailItem = null;
+  card?.focus();
+}
+$("detailClose").addEventListener("click", closeDetail);
+$("detailBackdrop").addEventListener("click", (e) => { if (e.target === e.currentTarget) closeDetail(); });
+document.addEventListener("keydown", (e) => { if (e.key === "Escape") closeDetail(); });
+
 // ---------- searching ----------
 function addAds(ads) {
   const grid = $("grid");
@@ -297,7 +391,8 @@ function runSearch() {
   const version = helperVersion();
   if (!version) { $("helperMissing").hidden = false; return setStatus("bad", "Install the helper add-on first (steps above)."); }
   if (olderThan(version, NEEDS_HELPER)) return setStatus("bad", `Your helper add-on is out of date (${version}). Open chrome://extensions, click ↻ on Ad Snob helper, then reload this page.`);
-  search = { id: crypto.randomUUID(), collecting: true };
+  search = { id: crypto.randomUUID(), collecting: true, query };
+  closeDetail();
   creatives = [];
   queue = [];
   $("go").hidden = true;
@@ -385,7 +480,7 @@ async function demoSearch(query, id) {
         ctx.fillText(`${query} sale this week`, 240, 290);
       }
       const url = URL.createObjectURL(await canvas.convertToBlob({ type: "image/png" }));
-      return { id: "", page: `Demo brand ${n}`, start: Math.floor(Date.now() / 1000) - n * 30 * 86400, images: [url] };
+      return { id: "", page: `Demo brand ${n}`, title: `Made-up ad ${n}`, body: "Made-up ad text for trying the page.", cta: "Shop now", start: Math.floor(Date.now() / 1000) - n * 30 * 86400, images: [url] };
     }));
     window.postMessage({ type: "adsnob:progress", id, ads, total: (page + 1) * 6 }, location.origin);
   }
