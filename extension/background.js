@@ -6,9 +6,13 @@
 // (datr, fr, sb from the logged-out homepage, captured with webRequest) and
 // adds it to its own requests with a declarativeNetRequest rule that only
 // matches requests this extension makes.
+//
+// The website talks to it through bridge.js over a "search" port: it sends
+// {query, country}; the helper sends {type: "progress"} after every page and
+// {type: "done"} at the end. Closing the port (the Stop button) stops it.
 import {
   HOME_URL, AD_LIBRARY_URL, GRAPHQL_URL, extractTokens, searchVariables, buildPayload,
-  parseSearchResponse, adImages, parseSetCookie, uuid,
+  parseSearchResponse, parseSetCookie, uuid, collectAds, simplifyAd, PAGE_SIZE,
 } from "./meta.js";
 
 const EXTENSION_ORIGIN = `chrome-extension://${chrome.runtime.id}`;
@@ -50,61 +54,101 @@ async function applyRules(referer) {
 
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 
-/** One small search: homepage for tokens, then one page of results. */
-async function search(query, country = "IN") {
-  const diag = { steps: [] };
-  const note = (s) => diag.steps.push(s);
-  const referer = `${AD_LIBRARY_URL}?active_status=active&ad_type=all&country=${country}&q=${encodeURIComponent(query)}`;
-
+/** Load the logged-out homepage for fresh tokens (client.py initialize). */
+async function startSession(referer, note) {
   await applyRules(referer);
   const home = await fetch(HOME_URL, { credentials: "omit", cache: "no-store" });
   const html = await home.text();
-  note(`homepage: HTTP ${home.status}, ${Math.round(html.length / 1024)} KB`);
   const tokens = extractTokens(html);
-  note(`tokens found: ${Object.keys(tokens).join(", ") || "none"}`);
-  note(`helper cookies: ${[...jar.keys()].join(", ")}`);
-  if (!tokens.lsd) return { ok: false, error: "Couldn't get a token from facebook.com (no lsd).", diag };
-
+  note(`homepage: HTTP ${home.status}, tokens: ${Object.keys(tokens).join(", ") || "none"}`);
+  if (!tokens.lsd) throw new Error("Couldn't get a token from facebook.com (no lsd).");
   await sleep(1500 + Math.random() * 1500); // a pause like a person, as the app does
   await applyRules(referer); // now with the cookies the homepage set
-  const variables = searchVariables({ query, country, sessionId: uuid(), collationToken: uuid(), v: tokens.v });
-  const headers = {
-    "content-type": "application/x-www-form-urlencoded",
-    "x-fb-friendly-name": "AdLibrarySearchPaginationQuery",
-    "x-fb-lsd": tokens.lsd,
-    "x-asbd-id": tokens["x-asbd-id"] || "359341",
-  };
-  const response = await fetch(GRAPHQL_URL, {
-    method: "POST", credentials: "omit", cache: "no-store", headers,
-    body: new URLSearchParams(buildPayload(tokens, variables, 1)),
-  });
-  const text = await response.text();
-  note(`search: HTTP ${response.status}, ${Math.round(text.length / 1024)} KB`);
-  const parsed = parseSearchResponse(text);
-  if (parsed.error) {
-    note(`Meta said: ${parsed.error}`);
-    return { ok: false, error: parsed.rateLimited ? "Meta is rate-limiting this connection." : parsed.error, diag };
-  }
-  const ads = parsed.ads.map((ad) => ({
-    id: String(ad.ad_archive_id || ad.adArchiveID || ad.id || ""),
-    page: ad.page_name || (ad.snapshot || {}).page_name || "",
-    images: adImages(ad),
-    start: ad.start_date || ad.ad_delivery_start_time || null,
-  }));
-  note(`ads: ${ads.length}, with images: ${ads.filter((a) => a.images.length).length}, more pages: ${parsed.nextCursor ? "yes" : "no"}`);
-  return { ok: true, ads, diag };
+  return tokens;
 }
 
+/** A full search: pages until done (see collectAds), reporting each page. */
+async function search({ query, country = "IN", maxImageAds, onProgress = () => {}, shouldStop = () => false }) {
+  const diag = { steps: [] };
+  const note = (s) => diag.steps.push(s);
+  const referer = `${AD_LIBRARY_URL}?active_status=active&ad_type=all&country=${country}&q=${encodeURIComponent(query)}`;
+  const sessionId = uuid();
+  const collationToken = uuid();
+  let tokens = await startSession(referer, note);
+  let counter = 0;
+  let refreshed = false;
+
+  async function fetchPage(cursor) {
+    const variables = searchVariables({ query, country, cursor, first: PAGE_SIZE, sessionId, collationToken, v: tokens.v });
+    const response = await fetch(GRAPHQL_URL, {
+      method: "POST", credentials: "omit", cache: "no-store",
+      headers: {
+        "content-type": "application/x-www-form-urlencoded",
+        "x-fb-friendly-name": "AdLibrarySearchPaginationQuery",
+        "x-fb-lsd": tokens.lsd,
+        "x-asbd-id": tokens["x-asbd-id"] || "359341",
+      },
+      body: new URLSearchParams(buildPayload(tokens, variables, ++counter)),
+    });
+    if (response.status === 403 && !refreshed) { // expired tokens: refresh once, like the app
+      refreshed = true;
+      note("search: HTTP 403, refreshing the session once");
+      tokens = await startSession(referer, note);
+      return fetchPage(cursor);
+    }
+    const parsed = parseSearchResponse(await response.text());
+    const ads = parsed.ads.map(simplifyAd);
+    note(`page ${counter}: HTTP ${response.status}, ${ads.length} ads${parsed.rateLimited ? ", Meta said slow down" : ""}`
+      + `${parsed.sessionExpired ? ", session expired" : ""}${parsed.error ? `, error: ${parsed.error}` : ""}`);
+    if (parsed.sessionExpired) tokens = await startSession(referer, note);
+    return { ...parsed, ads };
+  }
+
+  const result = await collectAds({ fetchPage, shouldStop, maxImageAds,
+    onPage: (fresh, total) => onProgress({ ads: fresh, total }) });
+  note(`finished: ${result.ads.length} image ads from ${result.pages} pages (${result.stoppedBecause})`);
+  return { ok: result.stoppedBecause !== "error" || result.ads.length > 0, ...result, diag };
+}
+
+function describe(stoppedBecause) {
+  return {
+    rate_limited: "Meta asked us to slow down, so the search stopped early. Wait a while before searching again.",
+    session_expired: "Meta's session kept expiring, so the search stopped early.",
+  }[stoppedBecause] || "";
+}
+
+// The website (through bridge.js): streams pages, stops when the port closes.
+chrome.runtime.onConnect.addListener((port) => {
+  if (port.name !== "search") return;
+  let stopped = false;
+  port.onDisconnect.addListener(() => { stopped = true; });
+  port.onMessage.addListener(async (message) => {
+    if (busy) { port.postMessage({ type: "done", ok: false, error: "A search is already running in this browser." }); return; }
+    busy = true;
+    try {
+      const result = await search({
+        query: String(message.query || "").slice(0, 60), country: message.country || "IN",
+        shouldStop: () => stopped,
+        onProgress: (p) => { if (!stopped) port.postMessage({ type: "progress", ...p }); },
+      });
+      if (!stopped) port.postMessage({ type: "done", ok: result.ok, total: result.ads.length, pages: result.pages,
+        stoppedBecause: result.stoppedBecause, warning: describe(result.stoppedBecause), error: result.error, diag: result.diag });
+    } catch (err) {
+      if (!stopped) port.postMessage({ type: "done", ok: false, error: String(err.message || err), diag: { steps: [] } });
+    } finally {
+      busy = false;
+    }
+  });
+});
+
+// The pop-up's quick test: one small search (up to 30 image ads).
 chrome.runtime.onMessage.addListener((message, _sender, reply) => {
   if (message?.type !== "search") return false;
-  if (busy) {
-    reply({ ok: false, error: "A search is already running." });
-    return false;
-  }
+  if (busy) { reply({ ok: false, error: "A search is already running." }); return false; }
   busy = true;
-  search(String(message.query || "skincare").slice(0, 60), message.country || "IN")
+  search({ query: String(message.query || "skincare").slice(0, 60), country: message.country || "IN", maxImageAds: 30 })
     .then(reply)
-    .catch((err) => reply({ ok: false, error: String(err), diag: { steps: [] } }))
+    .catch((err) => reply({ ok: false, error: String(err.message || err), diag: { steps: [] } }))
     .finally(() => { busy = false; });
   return true; // reply comes later
 });

@@ -108,7 +108,9 @@ export function parseSearchResponse(text) {
     const err = data.errors[0];
     const msg = err.message || err.summary || "Unknown error";
     const rateLimited = err.code === 1675004 || /rate limit/i.test(msg);
-    if (!data.data) return { ads: [], nextCursor: null, error: `${msg} (code ${err.code})`, rateLimited };
+    const sessionExpired = !rateLimited && (err.code === 1357004 || err.code === 1357001 || /session/i.test(msg));
+    if (rateLimited || sessionExpired) return { ads: [], nextCursor: null, error: null, rateLimited, sessionExpired };
+    if (!data.data) return { ads: [], nextCursor: null, error: `${msg} (code ${err.code})` };
   }
   const root = data.data || {};
   const results = (root.ad_library_main || {}).search_results_connection
@@ -142,6 +144,68 @@ export function adImages(ad) {
     }
   }
   return urls;
+}
+
+export const PAGE_SIZE = 30; // ads per request, as the app (SCRAPE_PAGE_SIZE)
+export const MAX_IMAGE_ADS = 500; // per search, as the app
+
+/**
+ * Page through a search the way the 1.4.0 collector does (collector.py search):
+ * stop at an empty page, at the last page, at MAX_IMAGE_ADS image ads, or after
+ * 3 rate-limit answers in a row (waiting 5*n + 1-3 s between them). Pauses
+ * 2-3 s between pages. Never restarts on its own.
+ *
+ * fetchPage(cursor) -> {ads, nextCursor, error, rateLimited, sessionExpired}
+ * onPage(newImageAds, totalImageAds) is called after each page.
+ * Returns {ads, pages, stoppedBecause}.
+ */
+export async function collectAds({ fetchPage, onPage = () => {}, shouldStop = () => false,
+  sleep = (ms) => new Promise((r) => setTimeout(r, ms)), maxImageAds = MAX_IMAGE_ADS, random = Math.random }) {
+  const seen = new Set();
+  const ads = [];
+  let cursor = null;
+  let pages = 0;
+  for (;;) {
+    if (shouldStop()) return { ads, pages, stoppedBecause: "stopped" };
+    let page;
+    for (let attempt = 1; ; attempt++) {
+      page = await fetchPage(cursor);
+      if (!page.rateLimited && !page.sessionExpired) break;
+      if (attempt >= 3) return { ads, pages, stoppedBecause: page.rateLimited ? "rate_limited" : "session_expired" };
+      await sleep(page.rateLimited ? (5 * attempt + 1 + random() * 2) * 1000 : 2000);
+      if (shouldStop()) return { ads, pages, stoppedBecause: "stopped" };
+    }
+    if (page.error) return { ads, pages, stoppedBecause: "error", error: page.error };
+    pages++;
+    if (!page.ads.length) return { ads, pages, stoppedBecause: "empty_page" };
+    const fresh = [];
+    for (const ad of page.ads) {
+      if (ads.length + fresh.length >= maxImageAds) break;
+      if (!ad.images.length || (ad.id && seen.has(ad.id))) continue; // image ads only, each once
+      if (ad.id) seen.add(ad.id);
+      fresh.push(ad);
+    }
+    ads.push(...fresh);
+    onPage(fresh, ads.length);
+    if (ads.length >= maxImageAds) return { ads, pages, stoppedBecause: "max_ads" };
+    if (!page.nextCursor) return { ads, pages, stoppedBecause: "last_page" };
+    cursor = page.nextCursor;
+    await sleep((2 + random()) * 1000); // like the app's rate-limit delay (2 s + up to 1 s)
+  }
+}
+
+/** One ad as the website needs it. */
+export function simplifyAd(raw) {
+  const ad = { ...(raw.snapshot || {}), ...raw }; // fields may sit at the top or inside snapshot
+  return {
+    id: String(ad.ad_archive_id || ad.adArchiveID || ad.id || ""),
+    page: ad.page_name || (ad.snapshot || {}).page_name || "",
+    images: adImages(ad),
+    start: ad.start_date || ad.ad_delivery_start_time || null,
+    title: ad.title || (ad.snapshot || {}).title || "",
+    body: ((ad.body || (ad.snapshot || {}).body || {}).text) || (typeof ad.body === "string" ? ad.body : ""),
+    cta: ad.cta_text || (ad.snapshot || {}).cta_text || "",
+  };
 }
 
 /** [name, value] from one Set-Cookie header value. */

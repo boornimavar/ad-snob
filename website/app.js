@@ -1,4 +1,5 @@
-// Ad Snob website, step 1: search through the helper add-on and show the ads.
+// Ad Snob website, step 2: full searches through the helper add-on, with ads
+// appearing page by page, a live count and a Stop button.
 // The page never contacts Meta itself: the helper (extension/) does, from the
 // visitor's own browser, logged out. Add ?demo=1 to the address to try the
 // page with made-up ads when the helper isn't installed (for development).
@@ -8,10 +9,11 @@ const CATEGORIES = [
   ["Retail & lifestyle", ["fashion", "food", "home decor", "electronics"]],
   ["Other industries", ["supplements", "fitness", "software", "pet care", "travel"]],
 ];
+const NEEDS_HELPER = "0.3.0"; // the first version that pages through results
 const DEMO = new URLSearchParams(location.search).has("demo");
 const $ = (id) => document.getElementById(id);
 const label = (q) => q.charAt(0).toUpperCase() + q.slice(1);
-let searching = false;
+let current = null; // {id, total}
 
 function renderCategories() {
   const nav = $("categories");
@@ -31,24 +33,19 @@ function renderCategories() {
   }
 }
 
-function helperInstalled() {
-  return DEMO || Boolean(document.documentElement.dataset.adsnobHelper);
+const helperVersion = () => (DEMO ? NEEDS_HELPER : document.documentElement.dataset.adsnobHelper || "");
+function olderThan(a, b) {
+  const x = a.split(".").map(Number);
+  const y = b.split(".").map(Number);
+  for (let i = 0; i < 3; i++) if ((x[i] || 0) !== (y[i] || 0)) return (x[i] || 0) < (y[i] || 0);
+  return false;
 }
 
-function askHelper(query, country) {
-  if (DEMO) return demoSearch(query);
-  const id = crypto.randomUUID();
-  return new Promise((resolve) => {
-    const timer = setTimeout(() => { window.removeEventListener("message", onReply); resolve({ ok: false, error: "The helper took too long (over 2 minutes)." }); }, 120000);
-    function onReply(event) {
-      if (event.source !== window || event.data?.type !== "adsnob:result" || event.data.id !== id) return;
-      clearTimeout(timer);
-      window.removeEventListener("message", onReply);
-      resolve(event.data.result);
-    }
-    window.addEventListener("message", onReply);
-    window.postMessage({ type: "adsnob:search", id, query, country }, location.origin);
-  });
+function setStatus(kind, text, spinning = false) {
+  $("status").className = `status ${kind}`;
+  $("status").replaceChildren();
+  if (spinning) { const dot = document.createElement("span"); dot.className = "spinner"; $("status").append(dot); }
+  $("status").append(text);
 }
 
 function runningFor(start) {
@@ -62,15 +59,9 @@ function runningFor(start) {
   return `Running ${Math.floor(days / 365)} yrs`;
 }
 
-function setStatus(kind, text) {
-  $("status").className = `status ${kind}`;
-  $("status").textContent = text;
-}
-
-function renderAds(ads) {
+function addCards(ads) {
   const grid = $("grid");
-  grid.replaceChildren();
-  for (const ad of ads.filter((a) => a.images.length)) {
+  for (const ad of ads) {
     const card = document.createElement("article");
     card.className = "card";
     const img = document.createElement("img");
@@ -101,38 +92,77 @@ function renderAds(ads) {
   }
 }
 
-async function runSearch() {
-  const query = $("q").value.trim();
-  if (!query || searching) return;
-  if (!helperInstalled()) { $("helperMissing").hidden = false; setStatus("bad", "Install the helper add-on first (steps above)."); return; }
-  searching = true;
-  $("go").disabled = true;
-  document.querySelectorAll("#categories button").forEach((b) => b.classList.toggle("active", b.dataset.query === query.toLowerCase()));
-  setStatus("", `Searching Meta for “${query}”… (up to a minute)`);
-  $("grid").replaceChildren();
-  const started = Date.now();
-  const result = await askHelper(query, $("country").value);
-  searching = false;
-  $("go").disabled = false;
-  $("diag").textContent = [...((result.diag || {}).steps || []), `took ${Math.round((Date.now() - started) / 1000)} s`].join("\n");
-  if (!result.ok) { setStatus("bad", `Didn't work: ${result.error}`); $("count").textContent = "No results"; return; }
-  const withImages = result.ads.filter((a) => a.images.length);
-  if (DEMO) setStatus("ok", "Demo mode: made-up ads, Meta wasn't contacted.");
-  else setStatus(result.ads.length ? "ok" : "bad", result.ads.length ? `Meta answered with ${result.ads.length} ads.` : "Meta answered, but with 0 ads.");
-  $("count").textContent = `${withImages.length} image ad${withImages.length === 1 ? "" : "s"}${DEMO ? " (made-up demo ads)" : ""}`;
-  renderAds(result.ads);
+function showCount(total, done) {
+  $("count").textContent = `${total} image ad${total === 1 ? "" : "s"}${done ? "" : " so far"}${DEMO ? " (made-up demo ads)" : ""}`;
 }
 
-function demoSearch(query) {
+function finish(result) {
+  const total = current ? current.total : 0;
+  current = null;
+  $("go").hidden = false;
+  $("stop").hidden = true;
+  $("diag").textContent = ((result.diag || {}).steps || []).join("\n") || "No details.";
+  showCount(total, true);
+  if (result.stoppedBecause === "stopped") return setStatus("", `Stopped. Showing the ${total} ads found so far.`);
+  if (!result.ok) return setStatus("bad", `Didn't work: ${result.error}`);
+  if (result.warning) return setStatus("bad", result.warning);
+  if (DEMO) return setStatus("ok", "Demo mode: made-up ads, Meta wasn't contacted.");
+  setStatus(total ? "ok" : "bad", total ? `Done: ${total} image ads from ${result.pages} pages.` : "Meta answered, but with 0 image ads. It may be limiting this connection; try again later.");
+}
+
+window.addEventListener("message", (event) => {
+  if (event.source !== window || !current || event.data?.id !== current.id) return;
+  if (event.data.type === "adsnob:progress") {
+    current.total = event.data.total;
+    addCards(event.data.ads);
+    showCount(current.total, false);
+    setStatus("", `Collecting… ${current.total} image ads so far. Ads appear as they arrive.`, true);
+  }
+  if (event.data.type === "adsnob:result") finish(event.data.result);
+});
+
+function runSearch() {
+  const query = $("q").value.trim();
+  if (!query || current) return;
+  const version = helperVersion();
+  if (!version) { $("helperMissing").hidden = false; return setStatus("bad", "Install the helper add-on first (steps above)."); }
+  if (olderThan(version, NEEDS_HELPER)) return setStatus("bad", `Your helper add-on is out of date (${version}). Open chrome://extensions, click ↻ on Ad Snob helper, then reload this page.`);
+  current = { id: crypto.randomUUID(), total: 0 };
+  $("go").hidden = true;
+  $("stop").hidden = false;
+  document.querySelectorAll("#categories button").forEach((b) => b.classList.toggle("active", b.dataset.query === query.toLowerCase()));
+  $("grid").replaceChildren();
+  showCount(0, false);
+  setStatus("", `Searching Meta for “${query}”… the first ads take about 10–30 seconds.`, true);
+  if (DEMO) return demoSearch(query, current.id);
+  window.postMessage({ type: "adsnob:search", id: current.id, query, country: $("country").value }, location.origin);
+}
+
+function stopSearch() {
+  if (!current) return;
+  if (DEMO) { current.stopped = true; return; }
+  window.postMessage({ type: "adsnob:stop", id: current.id }, location.origin);
+}
+
+async function demoSearch(query, id) {
   const colours = ["#e9c46a", "#f4a261", "#2a9d8f", "#e76f51", "#8ab17d", "#b5838d"];
-  const ads = colours.map((c, i) => ({
-    id: "", page: `Demo brand ${i + 1}`, start: Math.floor(Date.now() / 1000) - i * 40 * 86400,
-    images: [`data:image/svg+xml,${encodeURIComponent(`<svg xmlns="http://www.w3.org/2000/svg" width="400" height="${400 + (i % 3) * 80}"><rect width="100%" height="100%" fill="${c}"/><text x="50%" y="50%" font-family="sans-serif" font-size="28" text-anchor="middle" fill="#1b1b1b">${query} ad ${i + 1}</text></svg>`)}`],
-  }));
-  return new Promise((r) => setTimeout(() => r({ ok: true, ads, diag: { steps: ["demo mode: made-up ads, Meta not contacted"] } }), 600));
+  const run = current;
+  let total = 0;
+  for (let page = 0; page < 3; page++) {
+    await new Promise((r) => setTimeout(r, 700));
+    if (run.stopped) return window.postMessage({ type: "adsnob:result", id, result: { ok: true, stoppedBecause: "stopped", diag: { steps: ["demo: stopped"] } } }, location.origin);
+    const ads = colours.map((c, i) => ({
+      id: "", page: `Demo brand ${page * 6 + i + 1}`, start: Math.floor(Date.now() / 1000) - (page * 6 + i) * 30 * 86400,
+      images: [`data:image/svg+xml,${encodeURIComponent(`<svg xmlns="http://www.w3.org/2000/svg" width="400" height="${400 + (i % 3) * 80}"><rect width="100%" height="100%" fill="${c}"/><text x="50%" y="50%" font-family="sans-serif" font-size="26" text-anchor="middle" fill="#1b1b1b">${query} ad ${page * 6 + i + 1}</text></svg>`)}`],
+    }));
+    total += ads.length;
+    window.postMessage({ type: "adsnob:progress", id, ads, total }, location.origin);
+  }
+  window.postMessage({ type: "adsnob:result", id, result: { ok: true, pages: 3, stoppedBecause: "last_page", diag: { steps: ["demo mode: made-up ads, Meta not contacted"] } } }, location.origin);
 }
 
 $("searchForm").addEventListener("submit", (e) => { e.preventDefault(); runSearch(); });
+$("stop").addEventListener("click", stopSearch);
 renderCategories();
 // The helper marks the page as soon as it loads; check once the page is ready.
-setTimeout(() => { if (!helperInstalled()) $("helperMissing").hidden = false; }, 800);
+setTimeout(() => { if (!helperVersion()) $("helperMissing").hidden = false; }, 800);

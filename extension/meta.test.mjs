@@ -47,4 +47,69 @@ assert.equal(parseSearchResponse("<html>").error.startsWith("Not JSON"), true);
 
 assert.deepEqual(parseSetCookie("datr=abc123; expires=Fri; path=/; domain=.facebook.com; secure"), ["datr", "abc123"]);
 
+// --- collectAds: the paging rules (fake Meta, no waiting) ---
+const { collectAds, simplifyAd } = await import("./meta.js");
+const noWait = async () => {};
+const img = (id) => ({ id, page: "B", images: [`https://x/${id}.jpg`], start: null });
+const video = (id) => ({ id, page: "V", images: [], start: null });
+function fakeMeta(pagesList) {
+  const calls = [];
+  return { calls, fetchPage: async (cursor) => { calls.push(cursor); return pagesList[calls.length - 1]; } };
+}
+
+{ // pages until Meta has no next page; videos and repeats skipped; pauses between pages
+  const meta = fakeMeta([
+    { ads: [img("1"), video("2"), img("3")], nextCursor: "c1" },
+    { ads: [img("3"), img("4")], nextCursor: null },
+  ]);
+  const waits = [];
+  const seenPages = [];
+  const r = await collectAds({ fetchPage: meta.fetchPage, sleep: async (ms) => waits.push(ms), random: () => 0.5,
+    onPage: (fresh, total) => seenPages.push([fresh.map((a) => a.id), total]) });
+  assert.deepEqual(r.ads.map((a) => a.id), ["1", "3", "4"]);
+  assert.equal(r.stoppedBecause, "last_page");
+  assert.deepEqual(meta.calls, [null, "c1"]);
+  assert.deepEqual(seenPages, [[["1", "3"], 2], [["4"], 3]]);
+  assert.deepEqual(waits, [2500]); // one 2-3 s pause between the two pages
+}
+{ // an empty page stops the search (the original 1.4.0 behaviour)
+  const meta = fakeMeta([{ ads: [img("1")], nextCursor: "c1" }, { ads: [], nextCursor: "c2" }, { ads: [img("9")], nextCursor: null }]);
+  const r = await collectAds({ fetchPage: meta.fetchPage, sleep: noWait });
+  assert.equal(r.stoppedBecause, "empty_page");
+  assert.equal(meta.calls.length, 2);
+}
+{ // "slow down" is retried with growing waits, then the search stops after 3
+  const meta = fakeMeta([{ ads: [img("1")], nextCursor: "c1" }, { rateLimited: true, ads: [] }, { rateLimited: true, ads: [] }, { rateLimited: true, ads: [] }]);
+  const waits = [];
+  const r = await collectAds({ fetchPage: meta.fetchPage, sleep: async (ms) => waits.push(ms), random: () => 0 });
+  assert.equal(r.stoppedBecause, "rate_limited");
+  assert.deepEqual(r.ads.map((a) => a.id), ["1"]); // keeps what it has
+  assert.deepEqual(waits, [2000, 6000, 11000]);
+}
+{ // one "slow down" then fine: carries on
+  const meta = fakeMeta([{ rateLimited: true, ads: [] }, { ads: [img("1")], nextCursor: null }]);
+  const r = await collectAds({ fetchPage: meta.fetchPage, sleep: noWait });
+  assert.equal(r.stoppedBecause, "last_page");
+  assert.equal(r.ads.length, 1);
+}
+{ // stops at the image-ad cap, mid-page
+  const meta = fakeMeta([{ ads: [img("1"), img("2"), img("3")], nextCursor: "c1" }]);
+  const r = await collectAds({ fetchPage: meta.fetchPage, sleep: noWait, maxImageAds: 2 });
+  assert.equal(r.stoppedBecause, "max_ads");
+  assert.deepEqual(r.ads.map((a) => a.id), ["1", "2"]);
+}
+{ // Stop button
+  let stop = false;
+  const meta = fakeMeta([{ ads: [img("1")], nextCursor: "c1" }, { ads: [img("2")], nextCursor: null }]);
+  const r = await collectAds({ fetchPage: meta.fetchPage, sleep: async () => { stop = true; }, shouldStop: () => stop });
+  assert.equal(r.stoppedBecause, "stopped");
+  assert.equal(meta.calls.length, 1);
+}
+{ // simplifyAd keeps the ad text the detail view will need
+  const ad = simplifyAd({ ad_archive_id: 5, snapshot: { page_name: "P", title: "T", body: { text: "Body" }, cta_text: "Shop now",
+    images: [{ original_image_url: "https://x/a.jpg" }], videos: [] }, start_date: 1790000000 });
+  assert.deepEqual(ad, { id: "5", page: "P", images: ["https://x/a.jpg"], start: 1790000000, title: "T", body: "Body", cta: "Shop now" });
+}
+assert.equal(parseSearchResponse(JSON.stringify({ errors: [{ code: 1357004, message: "Please try again" }] })).sessionExpired, true);
+
 console.log("meta.js: all checks passed");
