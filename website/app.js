@@ -26,7 +26,7 @@ let creatives = [];       // one per picture: {key, ad, url, card, record, state
 let queue = [];
 let lanesBusy = 0;
 let designLedOnly = true;
-let showDuplicates = false;
+let showDuplicates = true; // shown by default (user's choice); the button hides them
 let showOffTopic = false;
 let winnersOnly = false;
 let regroupTimer = null;
@@ -307,6 +307,7 @@ function setLive({ stage, found, scored, designLed, copies, offTopic }) {
   $("statScoredOf").textContent = found ? `of ${found.toLocaleString("en-IN")} · ${Math.round((100 * scored) / found)}%` : "";
   tween($("statDesign"), designLed);
   tween($("statDups"), copies);
+  $("dupsLabel").textContent = showDuplicates ? "Duplicates shown" : "Duplicates hidden";
   tween($("statOff"), offTopic);
   $("liveBar").style.width = `${found ? (100 * scored) / found : 0}%`;
 }
