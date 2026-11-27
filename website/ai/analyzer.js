@@ -4,6 +4,7 @@
 import Tesseract from "https://cdn.jsdelivr.net/npm/tesseract.js@5.1.1/dist/tesseract.esm.min.js";
 import { ocrVariants, visualComplexity } from "./pixels.js";
 import { clipMeasurements, bestReading, rankScore } from "./score.js";
+import { phashRGB, frameVariantHashes } from "./phash.js";
 
 const { createScheduler, createWorker, PSM } = Tesseract; // the browser build only has a default export
 // Text reading is the slow part (6 readings per picture): one reader per spare core, 2-4.
@@ -98,7 +99,13 @@ export class Analyzer {
       visual_complexity: Math.round(visualComplexity(rgb, width, height) * 1e4) / 1e4,
       image_width: width,
       image_height: height,
+      aspect_ratio: height ? Math.round((width / height) * 1e4) / 1e4 : 0,
+      // fingerprints for duplicate grouping (dedup.js), same as the app's
+      image_hash: phashRGB(rgb, width, height),
+      frame_variant_hash: frameVariantHashes(rgb, width, height),
     };
+    // the app's combined_score: only a last tie-breaker when picking a group's best version
+    record.creative_score = Math.round((0.65 * record.clip_design_score + 0.25 * record.ocr_score + 0.1 * record.visual_complexity) * 1e4) / 1e4;
     record.rank_score = rankScore(record, this.model);
     return record;
   }

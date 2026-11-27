@@ -47,3 +47,6 @@ code{font-family:var(--mono);font-size:12px;background:var(--panel-2);padding:1p
 .search button.stop{background:#2d2025;color:var(--danger);border:1px solid #784742;font-weight:600}
 .status .spinner{display:inline-block;width:8px;height:8px;margin-right:8px;border-radius:50%;background:var(--lime);animation:pulse 1.2s infinite}
 @keyframes pulse{50%{opacity:.3}}
+.toggles{display:flex;gap:6px;flex-wrap:wrap}
+.winner-tag{display:inline-block;margin-top:8px;padding:3px 8px;border-radius:20px;background:#3a2a1c;color:#ffc58a;font-size:10px;font-weight:600}.new-tag{background:#1f2f3a;color:#9fd4ff}
+.card.duplicate{opacity:.7}

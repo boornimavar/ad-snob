@@ -4,6 +4,7 @@
 // fetches the ad pictures, from the visitor's own browser, logged out.
 // Add ?demo=1 to try the page with made-up ads when the helper isn't installed.
 import { Analyzer, decodeImage } from "./ai/analyzer.js";
+import { deduplicateRows, summarizeGroups, daysRunning, runningLabel, isLikelyWinner, isNewAd } from "./ai/dedup.js";
 
 const CATEGORIES = [
   ["Beauty & personal care", ["skincare", "beauty", "haircare", "makeup", "fragrance"]],
@@ -23,6 +24,9 @@ let creatives = [];       // one per picture: {key, ad, url, card, record, state
 let queue = [];
 let lanesBusy = 0;
 let designLedOnly = true;
+let showDuplicates = false;
+let winnersOnly = false;
+let regroupTimer = null;
 
 // ---------- helpers ----------
 function helperVersion() {
@@ -40,15 +44,14 @@ function setStatus(kind, text, spinning = false) {
   if (spinning) { const dot = document.createElement("span"); dot.className = "spinner"; $("status").append(dot); }
   $("status").append(text);
 }
-function runningFor(start) {
-  if (!start) return "";
-  const ms = typeof start === "number" ? start * 1000 : Date.parse(start);
-  if (!ms) return "";
-  const days = Math.max(0, Math.floor((Date.now() - ms) / 86400000));
-  if (days === 0) return "Started today";
-  if (days < 60) return `Running ${days}d`;
-  if (days < 730) return `Running ${Math.floor(days / 30)} mo`;
-  return `Running ${Math.floor(days / 365)} yrs`;
+/** Meta's start time as YYYY-MM-DD, like the app (datetime.fromtimestamp = this computer's local date). */
+function startDateOf(start) {
+  if (typeof start === "number") {
+    const d = new Date(start * 1000);
+    return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+  }
+  const m = String(start || "").match(/^\d{4}-\d{2}-\d{2}/);
+  return m ? m[0] : "";
 }
 
 /** An ad picture as a Blob, through the helper (websites can't read Facebook's pictures directly). */
@@ -90,6 +93,7 @@ async function scoreNext() {
     const picture = await decodeImage(await fetchPicture(item.url));
     item.record = await analyzer.analyze(picture.rgb, picture.width, picture.height);
     item.state = "scored";
+    scheduleRegroup();
   } catch (err) {
     item.state = "failed";
     item.error = String(err.message || err);
@@ -134,7 +138,8 @@ function makeCard(item) {
   const meta2 = document.createElement("div");
   meta2.className = "meta";
   const when = document.createElement("span");
-  when.textContent = runningFor(ad.start);
+  when.className = "when";
+  when.textContent = runningLabel(daysRunning(startDateOf(ad.start)));
   meta2.append(when);
   if (ad.id) {
     const link = document.createElement("a");
@@ -144,7 +149,9 @@ function makeCard(item) {
     link.textContent = "View on Meta ↗";
     meta2.append(link);
   }
-  body.append(brand, meta, meta2);
+  const tag = document.createElement("div");
+  tag.className = "tag-slot";
+  body.append(brand, tag, meta, meta2);
   card.append(img, body);
   item.card = card;
   return card;
@@ -158,16 +165,55 @@ function updateCard(item) {
     verdict.title = item.error;
   } else if (item.state === "scored") {
     const r = item.record.rank_score;
-    verdict.textContent = r >= DESIGN_LED ? "Design-led" : "Not design-led";
+    const dup = item.row?.is_creative_representative === 0;
+    verdict.textContent = dup ? "Duplicate" : r >= DESIGN_LED ? "Design-led" : "Not design-led";
+    verdict.title = dup ? "Another version of a design shown elsewhere (a different size or crop)" : "";
     score.textContent = `${Math.round(r * 100)}%`;
     item.card.classList.toggle("design-led", r >= DESIGN_LED);
+    item.card.classList.toggle("duplicate", dup);
+  }
+  if (item.row) {
+    // same card text as the app: how long the design has run, and in how many separate ads
+    const ads = Number(item.row.group_ad_count || 1);
+    item.card.querySelector(".when").textContent = [runningLabel(daysRunning(item.row.ad_start_date)), ads > 1 ? `${ads} ads` : ""].filter(Boolean).join(" · ");
+    const slot = item.card.querySelector(".tag-slot");
+    slot.replaceChildren();
+    const tag = document.createElement("span");
+    tag.className = "winner-tag";
+    if (isLikelyWinner(item.row)) {
+      tag.textContent = "🔥 Likely winner";
+      tag.title = "Running 3+ months in 3+ separate ads: the brand keeps paying for it (a clue, not proof)";
+      slot.append(tag);
+    } else if (isNewAd(item.row)) {
+      tag.textContent = "🆕 New";
+      tag.classList.add("new-tag");
+      tag.title = "Started in the last 2 weeks: something they are testing now";
+      slot.append(tag);
+    }
   }
   applyFilter(item);
 }
 
 function applyFilter(item) {
-  const hide = designLedOnly && item.state === "scored" && item.record.rank_score < DESIGN_LED;
-  item.card.hidden = hide;
+  const scored = item.state === "scored";
+  item.card.hidden = (designLedOnly && scored && item.record.rank_score < DESIGN_LED)
+    || (!showDuplicates && item.row?.is_creative_representative === 0)
+    || (winnersOnly && !(item.row && isLikelyWinner(item.row)));
+}
+
+/** Group copies of the same design exactly like the app (ai/dedup.js): every scored picture, in collection order. */
+function regroup() {
+  clearTimeout(regroupTimer);
+  regroupTimer = null;
+  const scored = creatives.filter((c) => c.state === "scored");
+  for (const c of scored) c.row = { ...c.record, ad_id: c.ad.id, image_file: c.key, ad_start_date: startDateOf(c.ad.start) };
+  const rows = scored.map((c) => c.row);
+  deduplicateRows(rows);
+  summarizeGroups(rows);
+  scored.forEach(updateCard);
+}
+function scheduleRegroup() {
+  if (!regroupTimer) regroupTimer = setTimeout(() => { regroup(); updateProgress(); }, 400);
 }
 
 function sortBestFirst() {
@@ -178,11 +224,15 @@ function sortBestFirst() {
 
 function updateProgress() {
   const scored = creatives.filter((c) => c.state !== "waiting").length;
-  const designLed = creatives.filter((c) => c.state === "scored" && c.record.rank_score >= DESIGN_LED).length;
-  const shown = designLedOnly ? designLed : creatives.length;
-  $("count").textContent = `${shown} ${designLedOnly ? "design-led " : ""}creative${shown === 1 ? "" : "s"}`
-    + `${designLedOnly ? ` (of ${scored} scored)` : ""}${DEMO ? " · made-up demo ads" : ""}`;
   const allScored = scored === creatives.length;
+  if (search && !search.collecting && allScored && !search.sorted) regroup(); // the final grouping, over everything
+  const unique = creatives.filter((c) => c.state === "scored" && c.row?.is_creative_representative !== 0);
+  const designLed = unique.filter((c) => c.record.rank_score >= DESIGN_LED).length;
+  const copies = creatives.filter((c) => c.state === "scored" && c.row?.is_creative_representative === 0).length;
+  const shown = creatives.filter((c) => c.state === "scored" && !c.card.hidden).length;
+  const kind = `${winnersOnly ? "likely-winner " : ""}${designLedOnly ? "design-led " : ""}`;
+  $("count").textContent = `${shown} ${kind}creative${shown === 1 ? "" : "s"} (of ${scored} scored`
+    + `${copies && !showDuplicates ? `, ${copies} duplicate${copies === 1 ? "" : "s"} hidden` : ""})${DEMO ? " · made-up demo ads" : ""}`;
   if (search?.collecting) {
     setStatus("", `Collecting ads… ${creatives.length} pictures so far, ${scored} scored.`, true);
   } else if (search && !allScored) {
@@ -192,7 +242,7 @@ function updateProgress() {
     sortBestFirst();
     const failed = creatives.filter((c) => c.state === "failed").length;
     setStatus(creatives.length ? "ok" : "bad", search.endNote || (creatives.length
-      ? `Done: ${creatives.length} pictures scored, ${designLed} design-led, best first.${failed ? ` ${failed} couldn't be scored.` : ""}`
+      ? `Done: ${creatives.length} pictures scored → ${unique.length} different designs (${copies} duplicate${copies === 1 ? "" : "s"} hidden), ${designLed} design-led, best first.${failed ? ` ${failed} couldn't be scored.` : ""}`
         + (designLedOnly && designLed < creatives.length ? " Turn off ✳ Design-led to see the rest." : "")
       : "Meta answered, but with 0 image ads. It may be limiting this connection; try again later."));
   }
@@ -262,6 +312,18 @@ function toggleDesignLed() {
   creatives.forEach(applyFilter);
   updateProgress();
 }
+function toggleDuplicates() {
+  showDuplicates = !showDuplicates;
+  $("dups").classList.toggle("active", showDuplicates);
+  creatives.forEach(applyFilter);
+  updateProgress();
+}
+function toggleWinners() {
+  winnersOnly = !winnersOnly;
+  $("winners").classList.toggle("active", winnersOnly);
+  creatives.forEach(applyFilter);
+  updateProgress();
+}
 
 async function demoSearch(query, id) {
   const colours = ["#e9c46a", "#f4a261", "#2a9d8f", "#e76f51", "#8ab17d", "#b5838d"];
@@ -313,6 +375,8 @@ function renderCategories() {
 $("searchForm").addEventListener("submit", (e) => { e.preventDefault(); runSearch(); });
 $("stop").addEventListener("click", stopSearch);
 $("designLed").addEventListener("click", toggleDesignLed);
+$("dups").addEventListener("click", toggleDuplicates);
+$("winners").addEventListener("click", toggleWinners);
 renderCategories();
 // The helper marks the page as soon as it loads; check once the page is ready.
 setTimeout(() => { if (!helperVersion()) $("helperMissing").hidden = false; }, 800);

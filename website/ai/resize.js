@@ -19,11 +19,17 @@ function bicubic(x) {
   return 0;
 }
 
+const sinc = (x) => { if (x === 0) return 1; x *= Math.PI; return Math.sin(x) / x; };
+const lanczos = (x) => (x >= -3 && x < 3 ? sinc(x) * sinc(x / 3) : 0);
+
+// Pillow's filters: kernel + support (Resample.c).
+export const FILTERS = { bicubic: { kernel: bicubic, support: 2 }, lanczos: { kernel: lanczos, support: 3 } };
+
 /** Pillow's precompute_coeffs: per output pixel, the first input index and integer weights. */
-function coefficients(inSize, outSize, offset = 0, span = inSize) {
+function coefficients(inSize, outSize, offset = 0, span = inSize, filter = FILTERS.bicubic) {
   const scale = span / outSize;
   const filterscale = Math.max(scale, 1);
-  const support = 2 * filterscale;
+  const support = filter.support * filterscale;
   const ksize = Math.ceil(support) * 2 + 1;
   const bounds = new Int32Array(outSize * 2);
   const kk = new Int32Array(outSize * ksize);
@@ -38,7 +44,7 @@ function coefficients(inSize, outSize, offset = 0, span = inSize) {
     const k = new Float64Array(xmax);
     let ww = 0;
     for (let x = 0; x < xmax; x++) {
-      const w = bicubic((x + xmin - center + 0.5) * ss);
+      const w = filter.kernel((x + xmin - center + 0.5) * ss);
       k[x] = w;
       ww += w;
     }
@@ -59,52 +65,59 @@ const clip8 = (v) => {
 };
 
 /**
- * Resize RGB pixels (Uint8Array, 3 bytes per pixel) like PIL's BICUBIC resize.
- * box = [x0, y0, x1, y1] in source pixels (Pillow's reducing box), default whole image.
+ * Resize pixels like Pillow's Image.resize (default BICUBIC). channels = 3
+ * (RGB) or 1 (grey). box = [x0, y0, x1, y1] in source pixels (floats allowed,
+ * as ImageOps.fit uses), default the whole image.
  */
-export function resizeBicubic(src, width, height, outW, outH, box = [0, 0, width, height]) {
+export function resizePixels(src, width, height, outW, outH, { box = [0, 0, width, height], channels = 3, filter = FILTERS.bicubic } = {}) {
   const [bx0, by0, bx1, by1] = box;
-  const horiz = coefficients(width, outW, bx0, bx1 - bx0);
-  const vert = coefficients(height, outH, by0, by1 - by0);
+  const horiz = coefficients(width, outW, bx0, bx1 - bx0, filter);
+  const vert = coefficients(height, outH, by0, by1 - by0, filter);
   // Rows the vertical pass will need (Pillow trims the horizontal pass the same way).
   const ybFirst = vert.bounds[0];
   const ybLast = vert.bounds[(outH - 1) * 2] + vert.bounds[(outH - 1) * 2 + 1];
   const rows = ybLast - ybFirst;
-  const tmp = new Uint8Array(outW * rows * 3);
+  const tmp = new Uint8Array(outW * rows * channels);
   const half = 1 << (PRECISION_BITS - 1);
+  const acc = new Float64Array(channels);
   for (let y = 0; y < rows; y++) {
-    const srcRow = (y + ybFirst) * width * 3;
+    const srcRow = (y + ybFirst) * width * channels;
     for (let xx = 0; xx < outW; xx++) {
       const xmin = horiz.bounds[xx * 2];
       const xmax = horiz.bounds[xx * 2 + 1];
       const k = xx * horiz.ksize;
-      let r = half, g = half, b = half;
+      acc.fill(half);
       for (let x = 0; x < xmax; x++) {
-        const p = srcRow + (x + xmin) * 3;
+        const p = srcRow + (x + xmin) * channels;
         const w = horiz.kk[k + x];
-        r += src[p] * w; g += src[p + 1] * w; b += src[p + 2] * w;
+        for (let c = 0; c < channels; c++) acc[c] += src[p + c] * w;
       }
-      const o = (y * outW + xx) * 3;
-      tmp[o] = clip8(r); tmp[o + 1] = clip8(g); tmp[o + 2] = clip8(b);
+      const o = (y * outW + xx) * channels;
+      for (let c = 0; c < channels; c++) tmp[o + c] = clip8(acc[c]);
     }
   }
-  const out = new Uint8Array(outW * outH * 3);
+  const out = new Uint8Array(outW * outH * channels);
   for (let yy = 0; yy < outH; yy++) {
     const ymin = vert.bounds[yy * 2] - ybFirst;
     const ymax = vert.bounds[yy * 2 + 1];
     const k = yy * vert.ksize;
     for (let xx = 0; xx < outW; xx++) {
-      let r = half, g = half, b = half;
+      acc.fill(half);
       for (let y = 0; y < ymax; y++) {
-        const p = ((y + ymin) * outW + xx) * 3;
+        const p = ((y + ymin) * outW + xx) * channels;
         const w = vert.kk[k + y];
-        r += tmp[p] * w; g += tmp[p + 1] * w; b += tmp[p + 2] * w;
+        for (let c = 0; c < channels; c++) acc[c] += tmp[p + c] * w;
       }
-      const o = (yy * outW + xx) * 3;
-      out[o] = clip8(r); out[o + 1] = clip8(g); out[o + 2] = clip8(b);
+      const o = (yy * outW + xx) * channels;
+      for (let c = 0; c < channels; c++) out[o + c] = clip8(acc[c]);
     }
   }
   return out;
+}
+
+/** RGB BICUBIC resize (Pillow's default), kept for the callers that only need that. */
+export function resizeBicubic(src, width, height, outW, outH, box = [0, 0, width, height]) {
+  return resizePixels(src, width, height, outW, outH, { box });
 }
 
 function roundHalfEven(x) {
