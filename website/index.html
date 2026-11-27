@@ -1,0 +1,53 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="robots" content="noindex, nofollow">
+<title>Creative Lens — Ad Intelligence</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=DM+Mono:wght@400;500&family=DM+Sans:wght@400;500;600;700&family=Playfair+Display:ital,wght@0,500;1,500&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+<div class="shell">
+  <aside class="sidebar">
+    <div class="brand"><span class="brand-symbol">✳</span><div><div class="brand-name">Creative Lens</div><div class="brand-caption">META AD LIBRARY · CREATIVE INTELLIGENCE</div></div></div>
+    <div class="side-label">Explore by industry</div>
+    <nav class="categories" id="categories" aria-label="Categories"></nav>
+  </aside>
+
+  <main class="main">
+    <section class="hero">
+      <div class="kicker">Creative research, without the guesswork</div>
+      <h1>Find ads worth <em>looking at.</em></h1>
+      <p>Live Meta ads, searched from your own browser.</p>
+    </section>
+
+    <div class="helper-missing" id="helperMissing" hidden>
+      <strong>One-time setup: install the Ad Snob helper</strong>
+      <p>The website searches Meta through a small Chrome add-on, so searches come from your own browser (Meta blocks searches from servers).</p>
+      <ol>
+        <li>Get the <code>extension</code> folder from your team (or the <code>ad-snob</code> repo).</li>
+        <li>Open <code>chrome://extensions</code> and switch on <b>Developer mode</b> (top right).</li>
+        <li>Click <b>Load unpacked</b> and choose the <code>extension</code> folder.</li>
+        <li>Reload this page.</li>
+      </ol>
+    </div>
+
+    <form class="search" id="searchForm">
+      <label class="search-box"><span aria-hidden="true">⌕</span><input id="q" placeholder="Search an industry, brand, or campaign theme…" autocomplete="off" aria-label="Search"></label>
+      <select id="country" aria-label="Market"><option value="IN" selected>India market</option><option value="GB">United Kingdom</option><option value="US">United States</option></select>
+      <button id="go" type="submit">Search ↗</button>
+    </form>
+
+    <div class="status" id="status" role="status"></div>
+    <div class="results-head"><strong id="count">Choose an industry or type a search to begin</strong></div>
+    <div class="grid" id="grid"></div>
+    <details class="diag"><summary>Diagnostics</summary><pre id="diag">No search yet.</pre></details>
+  </main>
+</div>
+<script src="app.js" type="module"></script>
+</body>
+</html>

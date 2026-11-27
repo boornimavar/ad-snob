@@ -1,0 +1,46 @@
+/* Same look as the laptop app's dashboard (dashboard.html). */
+:root{--bg:#14141b;--panel:#1c1b24;--panel-2:#24232d;--line:#373541;--ink:#f0eee8;--muted:#a5a2b0;--dim:#777482;--lime:#d8ff67;--lime-soft:#313a25;--danger:#ff8278;
+  --sans:'DM Sans',Arial,sans-serif;--serif:'Playfair Display',Georgia,serif;--mono:'DM Mono',monospace;color-scheme:dark}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--ink);font:14px/1.5 var(--sans);-webkit-font-smoothing:antialiased}
+button,input,select{font:inherit}
+button:focus-visible,input:focus-visible,select:focus-visible{outline:2px solid var(--lime);outline-offset:2px}
+.shell{display:flex;min-height:100vh}
+.sidebar{width:240px;flex-shrink:0;background:#17161e;border-right:1px solid var(--line);padding:24px 16px;position:sticky;top:0;height:100vh;overflow-y:auto}
+.brand{display:flex;gap:11px;align-items:center;padding:0 8px 28px}
+.brand-symbol{width:35px;height:35px;border-radius:11px;display:grid;place-items:center;background:var(--lime);color:#18191a;font-size:22px}
+.brand-name{font:500 24px/1 var(--serif)}
+.brand-caption{font-size:10px;color:var(--muted);margin-top:6px;letter-spacing:.035em}
+.side-label,.group-label{padding:0 10px 8px;color:var(--dim);font:11px var(--mono);letter-spacing:.1em;text-transform:uppercase}
+.group-label{margin-top:14px;font-size:10px}
+.categories{display:grid;gap:2px}
+.categories button{display:block;width:100%;text-align:left;border:1px solid transparent;background:transparent;color:var(--muted);border-radius:10px;padding:9px 12px;cursor:pointer}
+.categories button:hover{background:var(--panel-2);color:var(--ink)}
+.categories button.active{background:#303528;border-color:#3c4430;color:var(--lime)}
+.main{flex:1;min-width:0;padding:28px 36px 48px}
+.hero .kicker{font:10px var(--mono);text-transform:uppercase;letter-spacing:.17em;color:var(--lime);margin-bottom:10px}
+.hero h1{font:500 clamp(32px,3.4vw,48px)/1.1 var(--serif);letter-spacing:-1.2px;margin:0}
+.hero h1 em{color:var(--lime)}
+.hero p{color:var(--muted);margin:8px 0 22px}
+.helper-missing{background:#2a2420;border:1px solid #5a4632;border-radius:14px;padding:16px 18px;margin-bottom:18px;max-width:760px}
+.helper-missing p{margin:6px 0;color:var(--muted)}.helper-missing ol{margin:8px 0 0;padding-left:20px}
+code{font-family:var(--mono);font-size:12px;background:var(--panel-2);padding:1px 5px;border-radius:5px}
+.search{display:flex;gap:10px;flex-wrap:wrap}
+.search-box{flex:1;min-width:240px;height:52px;display:flex;align-items:center;gap:10px;background:var(--panel);border:1px solid #45424f;border-radius:13px;padding:0 14px;color:var(--muted)}
+.search-box input{flex:1;min-width:0;border:0;outline:none;background:transparent;color:var(--ink);font-size:14px}
+.search select{height:52px;border:1px solid var(--line);border-radius:12px;background:var(--panel);color:var(--ink);padding:0 12px}
+.search button{height:52px;background:var(--lime);color:#191a19;border:0;border-radius:12px;padding:0 22px;font-weight:700;cursor:pointer}
+.search button:disabled{opacity:.5;cursor:default}
+.status{min-height:22px;margin:14px 0 4px;color:var(--muted)}
+.status.ok{color:var(--lime)}.status.bad{color:var(--danger)}
+.results-head{margin:6px 0 14px;font-size:15px}
+.grid{columns:4 220px;column-gap:13px}
+.card{display:inline-block;width:100%;margin:0 0 13px;break-inside:avoid;background:var(--panel);border:1px solid #34323e;border-radius:12px;overflow:hidden}
+.card img{display:block;width:100%;height:auto;background:#292731}
+.card-body{padding:10px 12px 12px}
+.card .brand-line{font-weight:600;font-size:12.5px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.card .meta{display:flex;justify-content:space-between;gap:8px;margin-top:6px;font-size:11px;color:var(--muted)}
+.card a{color:var(--lime);text-decoration:none}
+.diag{margin-top:24px;color:var(--dim);font-size:12px}
+.diag pre{white-space:pre-wrap;background:var(--panel);border:1px solid var(--line);padding:10px;border-radius:8px}
+@media(max-width:800px){.shell{flex-direction:column}.sidebar{width:auto;height:auto;position:static;padding:16px}.categories{grid-template-columns:repeat(auto-fill,minmax(120px,1fr))}.main{padding:20px 16px 40px}.grid{columns:2 150px}}
