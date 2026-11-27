@@ -8,6 +8,7 @@
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,500;12..96,600;12..96,700;12..96,800&family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+<script>try{var t=localStorage.getItem("creative-lens-theme");document.documentElement.dataset.theme=t||(matchMedia("(prefers-color-scheme: light)").matches?"light":"dark")}catch(e){document.documentElement.dataset.theme="dark"}</script>
 <link rel="stylesheet" href="style.css">
 </head>
 <body>
@@ -17,6 +18,7 @@
     <nav class="side-nav" aria-label="Main navigation">
       <button class="nav-btn active" id="exploreBtn" type="button"><span class="nav-icon">⌂</span>Explore</button>
       <button class="nav-btn" id="savedBtn" type="button"><span class="nav-icon">♧</span>Saved ads <span class="nav-count" id="savedCount"></span></button>
+      <button class="nav-btn theme-btn" type="button" data-theme-toggle><span class="nav-icon theme-icon">☀</span><span class="theme-label">Light mode</span></button>
     </nav>
     <div class="side-label">Explore by industry</div>
     <nav class="categories" id="categories" aria-label="Categories"></nav>
@@ -72,6 +74,7 @@
     <details class="diag"><summary>Diagnostics</summary><pre id="diag">No search yet.</pre></details>
   </main>
 </div>
+<script src="theme.js" type="module"></script>
 <script src="app.js" type="module"></script>
 <div class="detail-backdrop" id="detailBackdrop" role="dialog" aria-modal="true" aria-labelledby="detailBrand">
   <div class="detail">

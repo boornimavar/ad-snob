@@ -8,6 +8,7 @@
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,500;12..96,600;12..96,700;12..96,800&family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+<script>try{var t=localStorage.getItem("creative-lens-theme");document.documentElement.dataset.theme=t||(matchMedia("(prefers-color-scheme: light)").matches?"light":"dark")}catch(e){document.documentElement.dataset.theme="dark"}</script>
 <link rel="stylesheet" href="style.css">
 <style>
   .guide{max-width:760px;margin:0 auto;padding:36px 20px 60px}
@@ -16,7 +17,8 @@
   .guide b,.guide strong{color:var(--ink)}
   .guide ol,.guide ul{padding-left:22px}.guide li{margin:6px 0}
   .guide a{color:var(--lime)}
-  .back{display:inline-block;margin-bottom:22px;font-size:13px;text-decoration:none}
+  .back{display:inline-block;font-size:13px;text-decoration:none}
+  .guide-top{display:flex;justify-content:space-between;align-items:center;margin-bottom:22px}.guide-top .theme-btn{width:auto}
   .box{background:var(--panel);border:1px solid var(--line);border-radius:14px;padding:14px 18px;margin:12px 0}
   .box p{margin:6px 0}
   dl{display:grid;grid-template-columns:max-content 1fr;gap:8px 16px;margin:10px 0}
@@ -26,7 +28,7 @@
 </head>
 <body>
 <main class="guide">
-  <a class="back" href="./">← Back to Creative Lens</a>
+  <div class="guide-top"><a class="back" href="./">← Back to Creative Lens</a><button class="nav-btn theme-btn" type="button" data-theme-toggle><span class="nav-icon theme-icon">☀</span><span class="theme-label">Light mode</span></button></div>
   <section class="hero">
     <div class="kicker">Teammate guide</div>
     <h1>Creative Lens in <em>2 minutes.</em></h1>
@@ -88,5 +90,6 @@
     <li>Nothing you search or save is sent to us: it all happens in your browser.</li>
   </ul>
 </main>
+<script src="theme.js" type="module"></script>
 </body>
 </html>
