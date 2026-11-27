@@ -129,21 +129,34 @@ export function parseSearchResponse(text) {
   return { ads, nextCursor, error: null };
 }
 
-/** Static image URLs of an ad (skips videos), from cards[] or images[] (models.py). */
+const VIDEO_MARKERS = ["VIDEO", "REELS", "VIDEO_SLIDESHOW", "VIDEO_COLLECTION"];
+
+/**
+ * The ad's pictures exactly as the laptop app picks them (models.py
+ * Ad.from_graphql_response + the static-only filters in search_ads_broad):
+ * a carousel gives one picture per card, the RESIZED one first; a normal ad
+ * gives only its FIRST picture, the ORIGINAL one first. The whole ad is
+ * skipped if any part of it is a video or Meta's display_format says video.
+ * `ad` is the flattened collated result (snapshot fields merged in).
+ */
 export function adImages(ad) {
-  const urls = [];
-  for (const card of ad.cards || []) {
-    if (card.video_hd_url || card.video_sd_url) continue;
-    const url = card.original_image_url || card.resized_image_url;
-    if (url) urls.push(url);
+  const cards = ad.cards || [];
+  const videos = ad.videos || [];
+  const images = ad.images || [];
+  let creatives;
+  if (cards.length) {
+    creatives = cards.map((c) => ({ image: c.resized_image_url || c.original_image_url, video: c.video_hd_url || c.video_sd_url }));
+  } else if (ad.body != null || ad.title != null || ad.videos != null || ad.images != null) {
+    const v = videos[0] || {};
+    const img = images[0] || {};
+    creatives = [{ image: img.original_image_url || img.resized_image_url, video: v.video_hd_url || v.video_sd_url }];
+  } else {
+    creatives = [];
   }
-  if (!urls.length && !(ad.videos || []).length) {
-    for (const img of ad.images || []) {
-      const url = img.original_image_url || img.resized_image_url;
-      if (url) urls.push(url);
-    }
-  }
-  return urls;
+  if (creatives.some((c) => c.video) || videos.length) return []; // has_video=False: no part may be a video
+  const display = String(ad.display_format || "").toUpperCase();
+  if (VIDEO_MARKERS.some((m) => display.includes(m))) return [];
+  return creatives.map((c) => c.image).filter(Boolean);
 }
 
 export const PAGE_SIZE = 30; // ads per request, as the app (SCRAPE_PAGE_SIZE)

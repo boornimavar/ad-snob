@@ -10,7 +10,7 @@ const CATEGORIES = [
   ["Retail & lifestyle", ["fashion", "food", "home decor", "electronics"]],
   ["Other industries", ["supplements", "fitness", "software", "pet care", "travel"]],
 ];
-const NEEDS_HELPER = "0.4.0"; // the first version that fetches ad pictures for scoring
+const NEEDS_HELPER = "0.5.0"; // picks ad pictures exactly like the app (0.4.0 took different ones)
 const DESIGN_LED = 0.5;       // same line as the app's Design-led filter
 const SCORING_LANES = 3;      // pictures scored at the same time
 const DEMO = new URLSearchParams(location.search).has("demo");
