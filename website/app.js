@@ -4,6 +4,7 @@
 // fetches the ad pictures, from the visitor's own browser, logged out.
 // Add ?demo=1 to try the page with made-up ads when the helper isn't installed.
 import { Analyzer, decodeImage } from "./ai/analyzer.js";
+import { allSaved, saveAd, unsaveAd } from "./saved.js";
 import { loadTopics, prepareSearch, checkTopics, categoryKey, searchPrompts } from "./ai/topic.js";
 import { deduplicateRows, summarizeGroups, daysRunning, runningLabel, isLikelyWinner, isNewAd } from "./ai/dedup.js";
 
@@ -29,6 +30,9 @@ let showDuplicates = false;
 let showOffTopic = false;
 let winnersOnly = false;
 let regroupTimer = null;
+let view = "explore";       // or "saved"
+let savedKeys = new Set();  // keys of the ads saved in this browser
+let savedItems = [];        // cards in the Saved ads view
 
 // ---------- helpers ----------
 function helperVersion() {
@@ -154,12 +158,20 @@ function makeCard(item) {
   const tag = document.createElement("div");
   tag.className = "tag-slot";
   body.append(brand, tag, meta, meta2);
-  card.append(img, body);
+  const media = document.createElement("div");
+  media.className = "creative-media";
+  const save = document.createElement("button");
+  save.type = "button";
+  save.className = "save-float";
+  save.addEventListener("click", () => toggleSave(item));
+  media.append(img, save);
+  card.append(media, body);
   card.tabIndex = 0;
   card.title = "Click for details";
   card.addEventListener("click", (e) => { if (!e.target.closest("a,button,input")) openDetail(item); });
   card.addEventListener("keydown", (e) => { if (e.key === "Enter" && e.target === card) openDetail(item); });
   item.card = card;
+  refreshSaveButton(item);
   return card;
 }
 
@@ -204,6 +216,7 @@ function updateCard(item) {
 }
 
 function applyFilter(item) {
+  if (item.searchId === "saved") { item.card.hidden = false; return; }
   const scored = item.state === "scored";
   item.card.hidden = (designLedOnly && scored && item.record.rank_score < DESIGN_LED)
     || (!showDuplicates && item.row?.is_creative_representative === 0)
@@ -246,7 +259,7 @@ function updateProgress() {
   const copies = creatives.filter((c) => c.state === "scored" && c.row?.is_creative_representative === 0).length;
   const shown = creatives.filter((c) => c.state === "scored" && !c.card.hidden).length;
   const kind = `${winnersOnly ? "likely-winner " : ""}${designLedOnly ? "design-led " : ""}`;
-  $("count").textContent = `${shown} ${kind}creative${shown === 1 ? "" : "s"} (of ${scored} scored`
+  if (view === "explore") $("count").textContent = `${shown} ${kind}creative${shown === 1 ? "" : "s"} (of ${scored} scored`
     + `${copies && !showDuplicates ? `, ${copies} duplicate${copies === 1 ? "" : "s"} hidden` : ""}`
     + `${offTopic && !showOffTopic ? `, ${offTopic} off-topic hidden` : ""})${DEMO ? " · made-up demo ads" : ""}`;
   if (search?.collecting) {
@@ -293,7 +306,7 @@ function openDetail(item) {
   $("detailImg").alt = `Ad by ${item.ad.page || "unknown advertiser"}`;
   renderDetailInfo(item);
   // every version of this design (this one first, then the group's lead, then by score), like the app
-  const versions = item.row ? [item, ...creatives.filter((c) => c !== item && c.row?.creative_group_id === item.row.creative_group_id)
+  const versions = item.row ? [item, ...creatives.filter((c) => c !== item && c.searchId === item.searchId && c.row?.creative_group_id === item.row.creative_group_id)
     .sort((a, b) => (b.row.is_creative_representative - a.row.is_creative_representative) || (b.record.rank_score - a.record.rank_score))] : [item];
   $("versionsLabel").textContent = versions.length > 1 ? `${versions.length} versions of this design` : "";
   $("detailVersions").replaceChildren(...(versions.length > 1 ? versions.map((v, i) => {
@@ -327,7 +340,7 @@ function renderDetailInfo(item) {
     r.is_creative_representative === 0 ? '<span class="winner-tag new-tag">Duplicate</span>' : "", r.off_topic === 1 ? '<span class="winner-tag new-tag">Off-topic</span>' : ""].join("");
   const copy = [text.title ? `<strong>${escapeHtml(text.title)}</strong>` : "", escapeHtml(text.body || "")].join("");
   const since = r.ad_start_date || startDateOf(item.ad.start);
-  $("detailInfo").innerHTML = `<div><div class="detail-brand" id="detailBrand">${escapeHtml(item.ad.page || "Unknown advertiser")}</div><div class="detail-sub">${escapeHtml(search?.query || "")}</div></div>
+  $("detailInfo").innerHTML = `<div><div class="detail-brand" id="detailBrand">${escapeHtml(item.ad.page || "Unknown advertiser")}</div><div class="detail-sub">${escapeHtml(item.query || search?.query || "")}</div></div>
   ${tags ? `<div class="detail-tags">${tags}</div>` : ""}
   <div class="detail-facts">
     <div class="fact"><div class="fact-label">Design score</div><div class="fact-value score">${scored ? `${score}%` : item.state === "failed" ? "—" : "Scoring…"}</div></div>
@@ -339,7 +352,8 @@ function renderDetailInfo(item) {
   ${copy ? `<div class="detail-section"><h4>Ad text</h4><div class="ad-copy">${copy}</div></div>` : ""}
   ${text.cta ? `<div class="detail-section"><h4>Button</h4><div class="notice-chips"><span>${escapeHtml(text.cta)}</span></div></div>` : ""}
   <div class="score-help">Design score = how designed the ad looks. Likely winner = running 3+ months in 3+ ads, so the brand keeps paying for it (a clue, not proof).</div>
-  <div class="detail-actions">${adLink ? `<a class="primary" href="${adLink}" target="_blank" rel="noopener">View on Meta ↗</a>` : ""}<a href="${escapeHtml(item.url)}" target="_blank" rel="noopener noreferrer">Open full image ↗</a></div>`;
+  <div class="detail-actions">${adLink ? `<a class="primary" href="${adLink}" target="_blank" rel="noopener">View on Meta ↗</a>` : ""}<button type="button" id="detailSave">${isSaved(item) ? "★ Saved" : "♧ Save"}</button><a href="${escapeHtml(item.url)}" target="_blank" rel="noopener noreferrer">Open full image ↗</a></div>`;
+  $("detailSave").addEventListener("click", () => toggleSave(item));
 }
 function closeDetail() {
   if (!detailItem) return;
@@ -353,12 +367,114 @@ $("detailClose").addEventListener("click", closeDetail);
 $("detailBackdrop").addEventListener("click", (e) => { if (e.target === e.currentTarget) closeDetail(); });
 document.addEventListener("keydown", (e) => { if (e.key === "Escape") closeDetail(); });
 
+// ---------- saved ads (kept in this browser, with a copy of the picture) ----------
+const saveKey = (item) => item.saveKey || item.key;
+const isSaved = (item) => savedKeys.has(saveKey(item));
+
+function refreshSaveButton(item) {
+  const button = item.card?.querySelector(".save-float");
+  if (!button) return;
+  const saved = isSaved(item);
+  button.classList.toggle("saved", saved);
+  button.textContent = saved ? "★" : "♧";
+  button.title = button.ariaLabel = saved ? "Remove from saved ads" : "Save this ad";
+}
+function refreshSavedEverywhere(key) {
+  for (const c of [...creatives, ...savedItems]) if (saveKey(c) === key) refreshSaveButton(c);
+  if (detailItem && saveKey(detailItem) === key) renderDetailInfo(detailItem);
+  $("savedCount").textContent = savedKeys.size ? String(savedKeys.size) : "";
+}
+
+async function toggleSave(item) {
+  const key = saveKey(item);
+  if (item.saving) return;
+  item.saving = true;
+  try {
+    if (savedKeys.has(key)) {
+      await unsaveAd(key);
+      savedKeys.delete(key);
+      if (view === "saved") {
+        const gone = savedItems.find((c) => saveKey(c) === key);
+        if (gone === detailItem) closeDetail();
+        gone?.card.remove();
+        savedItems = savedItems.filter((c) => c !== gone);
+        updateSavedCount();
+      }
+    } else {
+      const text = item.ad.texts?.[item.index] || item.ad;
+      await saveAd({
+        key,
+        query: item.query || search?.query || "",
+        index: 0,
+        ad: { id: item.ad.id, page: item.ad.page, start: item.ad.start, texts: [{ title: text.title || "", body: text.body || "", cta: text.cta || "" }] },
+        record: item.record || null,
+        row: item.row ? { ...item.row, creative_group_id: null } : null,
+        picture: await fetchPicture(item.url),
+      });
+      savedKeys.add(key);
+    }
+  } catch (err) {
+    setStatus("bad", `Couldn't update saved ads: ${err.message || err}`);
+  } finally {
+    item.saving = false;
+  }
+  refreshSavedEverywhere(key);
+}
+
+function updateSavedCount() {
+  $("count").textContent = savedItems.length
+    ? `${savedItems.length} saved creative${savedItems.length === 1 ? "" : "s"} · kept in this browser`
+    : "No saved ads yet. Press ♧ on any ad to keep it here (it stays after you close the page).";
+}
+
+async function showSaved() {
+  view = "saved";
+  closeDetail();
+  $("exploreBtn").classList.remove("active");
+  $("savedBtn").classList.add("active");
+  $("grid").hidden = true;
+  document.querySelector(".toggles").hidden = true;
+  for (const c of savedItems) URL.revokeObjectURL(c.url);
+  savedItems = [];
+  $("savedGrid").replaceChildren();
+  $("savedGrid").hidden = false;
+  $("count").textContent = "Loading saved ads…";
+  try {
+    for (const entry of await allSaved()) {
+      const item = {
+        key: entry.key, saveKey: entry.key, ad: entry.ad, index: 0, query: entry.query, searchId: "saved",
+        url: URL.createObjectURL(entry.picture), record: entry.record, row: entry.row,
+        state: entry.record ? "scored" : "unscored",
+      };
+      savedItems.push(item);
+      $("savedGrid").append(makeCard(item));
+      if (item.record) updateCard(item); else item.card.querySelector(".verdict").textContent = "Not scored";
+    }
+  } catch (err) {
+    $("count").textContent = `Couldn't open saved ads: ${err.message || err}`;
+    return;
+  }
+  if (view === "saved") updateSavedCount();
+}
+
+function showExplore() {
+  if (view === "explore") return;
+  view = "explore";
+  closeDetail();
+  $("savedBtn").classList.remove("active");
+  $("exploreBtn").classList.add("active");
+  $("savedGrid").hidden = true;
+  $("grid").hidden = false;
+  document.querySelector(".toggles").hidden = false;
+  if (search) updateProgress(); else $("count").textContent = "Choose an industry or type a search to begin";
+}
+
 // ---------- searching ----------
 function addAds(ads) {
   const grid = $("grid");
   for (const ad of ads) {
     ad.images.forEach((url, i) => {
-      const item = { key: `${ad.id}:${i}`, index: i, ad, url, state: "waiting", searchId: search.id };
+      const item = { key: ad.id ? `${ad.id}:${i}` : url, index: i, ad, url, state: "waiting", searchId: search.id };
       creatives.push(item);
       grid.append(makeCard(item));
       enqueue(item);
@@ -391,6 +507,7 @@ function runSearch() {
   const version = helperVersion();
   if (!version) { $("helperMissing").hidden = false; return setStatus("bad", "Install the helper add-on first (steps above)."); }
   if (olderThan(version, NEEDS_HELPER)) return setStatus("bad", `Your helper add-on is out of date (${version}). Open chrome://extensions, click ↻ on Ad Snob helper, then reload this page.`);
+  showExplore();
   search = { id: crypto.randomUUID(), collecting: true, query };
   closeDetail();
   creatives = [];
@@ -511,6 +628,10 @@ $("stop").addEventListener("click", stopSearch);
 $("designLed").addEventListener("click", toggleDesignLed);
 $("dups").addEventListener("click", toggleDuplicates);
 $("offTopic").addEventListener("click", toggleOffTopic);
+$("exploreBtn").addEventListener("click", showExplore);
+$("savedBtn").addEventListener("click", showSaved);
+allSaved().then((rows) => { savedKeys = new Set(rows.map((r) => r.key)); refreshSavedEverywhere(null); })
+  .catch(() => { /* private windows may block storage; saving will say so */ });
 $("winners").addEventListener("click", toggleWinners);
 renderCategories();
 // The helper marks the page as soon as it loads; check once the page is ready.

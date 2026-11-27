@@ -108,8 +108,11 @@ Phase 2 = shared library on Hugging Face (Supabase is blocked by ACT).
   vectors + side-list category vectors come from `ai/export_topic_text.py`;
   typed searches use CLIP's text half in the browser (fp16, identical,
   ~127 MB once). Helper 0.6.0 sends each carousel card's own title/body (the
-  app's records are per card). Still to do: detail panel, saved ads; then
-  step 5 sharing with teammates.
+  app's records are per card). Detail panel = the app's (versions strip,
+  facts, "What the AI noticed"). Saved ads live in each visitor's own browser
+  (`website/saved.js`, IndexedDB, with a copy of the picture since Meta's
+  links expire); not shared between teammates. Step 4 done; next step 5
+  sharing with teammates.
 
 ## Hard-won facts
 - `meta_ads_collector` must be **1.4.0** (from `meta_ads_collector_source.zip`).

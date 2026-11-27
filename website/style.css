@@ -64,3 +64,12 @@ code{font-family:var(--mono);font-size:12px;background:var(--panel-2);padding:1p
 .detail-actions{display:flex;gap:8px;flex-wrap:wrap;margin-top:auto;position:sticky;bottom:0;padding:12px 0 20px;background:var(--panel);border-top:1px solid var(--line)}.detail-actions a,.detail-actions button{display:inline-flex;align-items:center;gap:6px;text-decoration:none;font-size:13px;padding:9px 13px;border-radius:9px;border:1px solid var(--line);background:var(--panel-2);color:var(--ink);cursor:pointer}.detail-actions .primary{background:var(--lime);border-color:var(--lime);color:#18191a;font-weight:600}
 .score-help{font-size:11px;color:var(--dim);line-height:1.5}
 @media(max-width:800px){.detail-backdrop{padding:0;align-items:stretch}.detail{max-height:none;grid-template-rows:auto;grid-template-columns:1fr;border-radius:0;overflow-y:auto}.detail-media .main-img img{max-height:55vh}.detail-info{overflow:visible}}
+/* Saved ads: the app's nav buttons and save button */
+.side-nav{display:grid;gap:2px;margin-bottom:22px}
+.nav-btn{display:flex;align-items:center;gap:12px;width:100%;border:1px solid transparent;background:transparent;text-align:left;color:var(--muted);border-radius:10px;padding:11px 13px;font-size:13px;cursor:pointer}
+.nav-btn:hover{background:var(--panel-2);color:var(--ink)}.nav-btn.active{background:#303528;border-color:#3c4430;color:var(--lime)}
+.nav-icon{width:17px;text-align:center;font-size:16px}.nav-count{margin-left:auto;font:11px var(--mono);color:var(--dim)}
+.creative-media{position:relative;background:#292731}
+.save-float{position:absolute;z-index:4;right:10px;top:10px;width:33px;height:33px;border:1px solid #ffffff6b;background:#191820dc;color:#f0eee8;border-radius:50%;font-size:17px;display:grid;place-items:center;backdrop-filter:blur(8px);cursor:pointer}
+.save-float:hover,.save-float.saved{background:var(--lime);color:#18191a;border-color:var(--lime)}
+[hidden]{display:none!important}

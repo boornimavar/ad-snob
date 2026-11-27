@@ -14,6 +14,10 @@
 <div class="shell">
   <aside class="sidebar">
     <div class="brand"><span class="brand-symbol">✳</span><div><div class="brand-name">Creative Lens</div><div class="brand-caption">META AD LIBRARY · CREATIVE INTELLIGENCE</div></div></div>
+    <nav class="side-nav" aria-label="Main navigation">
+      <button class="nav-btn active" id="exploreBtn" type="button"><span class="nav-icon">⌂</span>Explore</button>
+      <button class="nav-btn" id="savedBtn" type="button"><span class="nav-icon">♧</span>Saved ads <span class="nav-count" id="savedCount"></span></button>
+    </nav>
     <div class="side-label">Explore by industry</div>
     <nav class="categories" id="categories" aria-label="Categories"></nav>
   </aside>
@@ -47,6 +51,7 @@
     <div class="ai-status" id="aiStatus" role="status"></div>
     <div class="results-head"><strong id="count">Choose an industry or type a search to begin</strong><span class="toggles"><button id="designLed" type="button" class="toggle active" title="Only show pictures scoring 50% or more">✳ Design-led</button><button id="winners" type="button" class="toggle" title="Running 3+ months in 3+ separate ads: brands rarely keep paying for ads that don't work">🔥 Likely winners</button><button id="offTopic" type="button" class="toggle" title="Ads that aren't about this search (e.g. a hiring poster in “food”) are hidden; this shows them">Show off-topic</button><button id="dups" type="button" class="toggle" title="Copies of the same design (other sizes or crops) are hidden; this shows them">Show duplicates</button></span></div>
     <div class="grid" id="grid"></div>
+    <div class="grid" id="savedGrid" hidden></div>
     <details class="diag"><summary>Diagnostics</summary><pre id="diag">No search yet.</pre></details>
   </main>
 </div>
