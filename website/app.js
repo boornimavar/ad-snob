@@ -259,6 +259,58 @@ function sortBestFirst() {
   }
 }
 
+// ---------- the live panel: numbers that count up ----------
+const REDUCED_MOTION = matchMedia("(prefers-reduced-motion: reduce)").matches;
+function tween(el, to) {
+  const from = Number(el.dataset.v || 0);
+  if (from === to && el.textContent !== "") return;
+  el.dataset.v = to;
+  if (to > from) { el.classList.remove("bump"); void el.offsetWidth; el.classList.add("bump"); }
+  cancelAnimationFrame(el.raf);
+  clearTimeout(el.landing);
+  const land = () => { cancelAnimationFrame(el.raf); el.textContent = to.toLocaleString("en-IN"); };
+  if (REDUCED_MOTION || document.hidden) return land();
+  el.landing = setTimeout(land, 700); // the right number even if the browser skips animation frames
+  const start = performance.now();
+  const step = (now) => {
+    const k = Math.min(1, (now - start) / 650);
+    el.textContent = Math.round(from + (to - from) * (1 - (1 - k) ** 3)).toLocaleString("en-IN");
+    if (k < 1) el.raf = requestAnimationFrame(step);
+  };
+  el.raf = requestAnimationFrame(step);
+}
+function setCount(num, label, extra = "") {
+  if (!$("countNum")) {
+    $("count").replaceChildren();
+    const n = document.createElement("span"); n.id = "countNum"; n.className = "count-num";
+    const l = document.createElement("span"); l.id = "countLabel";
+    const x = document.createElement("span"); x.id = "countExtra"; x.className = "count-extra";
+    $("count").append(n, l, x);
+  }
+  tween($("countNum"), num);
+  $("countLabel").textContent = label;
+  $("countExtra").textContent = extra;
+}
+function setLive({ stage, found, scored, designLed, copies, offTopic }) {
+  $("live").hidden = view !== "explore";
+  $("live").dataset.stage = stage;
+  $("liveKicker").textContent = stage === "done" ? (search.endNote?.startsWith("Stopped") ? "Stopped" : "Search finished") : "Live search";
+  $("liveTitle").textContent = `“${search.query}” · ${$("country").selectedOptions[0].text}`;
+  const order = ["collecting", "scoring", "done"];
+  document.querySelectorAll("#live .stage").forEach((el) => {
+    const i = order.indexOf(el.dataset.stage), now = order.indexOf(stage);
+    el.classList.toggle("active", i === now);
+    el.classList.toggle("complete", i < now || stage === "done");
+  });
+  tween($("statFound"), found);
+  tween($("statScored"), scored);
+  $("statScoredOf").textContent = found ? `of ${found.toLocaleString("en-IN")} · ${Math.round((100 * scored) / found)}%` : "";
+  tween($("statDesign"), designLed);
+  tween($("statDups"), copies);
+  tween($("statOff"), offTopic);
+  $("liveBar").style.width = `${found ? (100 * scored) / found : 0}%`;
+}
+
 function updateProgress() {
   const scored = creatives.filter((c) => c.state !== "waiting").length;
   const allScored = scored === creatives.length;
@@ -269,20 +321,19 @@ function updateProgress() {
   const copies = creatives.filter((c) => c.state === "scored" && c.row?.is_creative_representative === 0).length;
   const shown = creatives.filter((c) => c.state === "scored" && !c.card.hidden).length;
   const kind = `${winnersOnly ? "likely-winner " : ""}${designLedOnly ? "design-led " : ""}`;
-  if (view === "explore") $("count").textContent = `${shown} ${kind}creative${shown === 1 ? "" : "s"} (of ${scored} scored`
-    + `${copies && !showDuplicates ? `, ${copies} duplicate${copies === 1 ? "" : "s"} hidden` : ""}`
-    + `${offTopic && !showOffTopic ? `, ${offTopic} off-topic hidden` : ""})${DEMO ? " · made-up demo ads" : ""}`;
+  if (view === "explore") setCount(shown, ` ${kind}creative${shown === 1 ? "" : "s"} shown`, `${DEMO ? " · made-up demo ads" : ""}`);
+  if (search) setLive({ stage: search.collecting ? "collecting" : allScored ? "done" : "scoring", found: creatives.length, scored, designLed, copies, offTopic });
   if (search?.collecting) {
-    setStatus("", `Collecting ads… ${creatives.length} pictures so far, ${scored} scored.`, true);
+    if (creatives.length) setStatus("", "");
   } else if (search && !allScored) {
-    setStatus("", `Scoring pictures… ${scored} of ${creatives.length} done. The best ones move to the top when it finishes.`, true);
+    setStatus("", "The best ones move to the top when scoring finishes.");
   } else if (search && allScored && !search.sorted) {
     search.sorted = true;
     sortBestFirst();
     const failed = creatives.filter((c) => c.state === "failed").length;
     setStatus(creatives.length ? "ok" : "bad", search.endNote || (creatives.length
-      ? `Done: ${creatives.length} pictures scored → ${unique.length} different designs (${copies} duplicate${copies === 1 ? "" : "s"}${offTopic && !showOffTopic ? `, ${offTopic} off-topic` : ""} hidden), ${designLed} design-led, best first.${failed ? ` ${failed} couldn't be scored.` : ""}`
-        + (designLedOnly && designLed < creatives.length ? " Turn off ✳ Design-led to see the rest." : "")
+      ? `Done: ${unique.length} different designs, best first.${failed ? ` ${failed} picture${failed === 1 ? "" : "s"} couldn't be scored.` : ""}`
+        + (designLedOnly && designLed < unique.length ? " Turn off ✳ Design-led to see the rest." : "")
       : "Meta answered, but with 0 image ads. It may be limiting this connection; try again later."));
   }
 }
@@ -444,6 +495,7 @@ async function showSaved() {
   $("exploreBtn").classList.remove("active");
   $("savedBtn").classList.add("active");
   $("grid").hidden = true;
+  $("live").hidden = true;
   document.querySelector(".toggles").hidden = true;
   for (const c of savedItems) URL.revokeObjectURL(c.url);
   savedItems = [];
@@ -478,6 +530,7 @@ function showExplore() {
   $("grid").hidden = false;
   document.querySelector(".toggles").hidden = false;
   if (search) updateProgress(); else $("count").textContent = "Choose an industry or type a search to begin";
+  if (!search) $("live").hidden = true;
 }
 
 // ---------- searching ----------
@@ -529,6 +582,7 @@ function runSearch() {
   $("grid").replaceChildren();
   $("count").textContent = "";
   setStatus("", `Searching Meta for “${query}”… the first ads take about 10–30 seconds.`, true);
+  setLive({ stage: "collecting", found: 0, scored: 0, designLed: 0, copies: 0, offTopic: 0 });
   startAI().catch((err) => { $("aiStatus").textContent = `The AI couldn't start: ${err.message || err}`; });
   prepareTopic(query, search);
   if (DEMO) return demoSearch(query, search.id);

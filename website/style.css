@@ -106,3 +106,43 @@ code{font-family:var(--mono);font-size:12px;background:var(--panel-2);padding:1p
 @keyframes fade{from{opacity:0}}@keyframes zoomin{from{opacity:0;transform:translateY(12px) scale(.97)}}
 .status.ok{animation:fade .4s ease-out}
 @media (prefers-reduced-motion:reduce){*,*:before,*:after{animation-duration:.01ms!important;animation-iteration-count:1!important;transition-duration:.01ms!important}}
+/* ---- Live panel: stages + number tiles that count up ---- */
+.live{margin:18px 0 6px;background:linear-gradient(135deg,#211f29,#1b1a22);border:1px solid #3d3947;border-radius:18px;padding:16px 18px 18px;position:relative;overflow:hidden;animation:zoomin .35s cubic-bezier(.2,.8,.2,1)}
+.live:after{content:"";position:absolute;right:-80px;top:-90px;width:280px;height:220px;background:radial-gradient(closest-side,#d8ff6718,transparent);animation:drift 8s ease-in-out infinite alternate;pointer-events:none}
+.live-head{display:flex;justify-content:space-between;align-items:center;gap:14px;flex-wrap:wrap;margin-bottom:14px}
+.live-kicker{display:flex;align-items:center;gap:8px;font:11px var(--mono);letter-spacing:.12em;text-transform:uppercase;color:var(--muted)}
+.live-dot{width:8px;height:8px;border-radius:50%;background:var(--lime);box-shadow:0 0 0 0 #d8ff6788;animation:ping 1.6s infinite}
+.live[data-stage=done] .live-dot{animation:none;background:#8fb84a}
+@keyframes ping{70%{box-shadow:0 0 0 9px #d8ff6700}100%{box-shadow:0 0 0 0 #d8ff6700}}
+.live-title{font:700 20px/1.2 var(--serif);letter-spacing:-.01em;margin-top:5px}
+.stages{display:flex;gap:6px;flex-wrap:wrap}
+.stage{display:flex;align-items:center;gap:7px;padding:6px 11px 6px 6px;border:1px solid var(--line);border-radius:99px;color:var(--dim);font-size:12px;transition:all .3s}
+.stage b{display:grid;place-items:center;width:20px;height:20px;border-radius:50%;background:#2e2d38;font:500 10px var(--mono);transition:all .3s}
+.stage.complete{color:#c4e88a;border-color:#46563a}.stage.complete b{background:#3a4a2a;color:#d8ff67}
+.stage.active{color:var(--lime);border-color:#657544;background:var(--lime-soft)}.stage.active b{background:var(--lime);color:#18191a;animation:breathe 1.6s ease-in-out infinite}
+.live[data-stage=done] .stage.active b{animation:none}
+@keyframes breathe{50%{transform:scale(1.15)}}
+.tiles{display:grid;grid-template-columns:repeat(5,minmax(0,1fr));gap:10px}
+.tile{background:#25232e;border:1px solid #393643;border-radius:13px;padding:12px 14px;min-width:0;transition:border-color .3s,transform .3s}
+.tile:hover{transform:translateY(-2px);border-color:#4a4756}
+.tile-label{font:10px var(--mono);letter-spacing:.07em;text-transform:uppercase;color:var(--muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.tile-num{font:800 clamp(26px,2.6vw,36px)/1.1 var(--serif);letter-spacing:-.02em;margin-top:6px;font-variant-numeric:tabular-nums;display:inline-block}
+.tile.lime .tile-num{color:var(--lime)}
+.tile-sub{font-size:11px;color:var(--dim);margin-top:3px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.bump{animation:bump .45s ease-out}
+@keyframes bump{40%{transform:translateY(-3px) scale(1.06);color:var(--lime);text-shadow:0 0 18px #d8ff6799}}
+.live-track{height:6px;background:#34323d;border-radius:99px;overflow:hidden;margin-top:14px}
+.live-track span{display:block;height:100%;width:0;border-radius:99px;background:linear-gradient(90deg,#9cc94a,var(--lime));transition:width .6s cubic-bezier(.2,.8,.2,1);position:relative;overflow:hidden}
+.live:not([data-stage=done]) .live-track span:after{content:"";position:absolute;inset:0;background:linear-gradient(90deg,transparent,#ffffff70,transparent);animation:sheen 1.4s linear infinite;background-size:200% 100%}
+.live[data-stage=collecting] .live-track span{min-width:10%}
+.results-head strong{display:flex;align-items:baseline;gap:6px;font-weight:600;font-size:15px}
+.count-num{font:800 30px/1 var(--serif);letter-spacing:-.02em;color:var(--lime);font-variant-numeric:tabular-nums;display:inline-block}
+.count-extra{color:var(--dim);font-weight:400;font-size:13px}
+@media(max-width:1100px){.tiles{grid-template-columns:repeat(3,minmax(0,1fr))}}
+@media(max-width:600px){.tiles{grid-template-columns:repeat(2,minmax(0,1fr))}}
+/* ---- Sidebar polish ---- */
+.categories button,.nav-btn{position:relative;transition:background .2s,color .2s,border-color .2s,transform .2s,padding .2s}
+.categories button:hover{transform:translateX(3px)}
+.categories button.active,.nav-btn.active{box-shadow:inset 3px 0 0 var(--lime),0 6px 18px #d8ff670d}
+.categories button.active:after{content:"";position:absolute;right:12px;top:50%;width:6px;height:6px;margin-top:-3px;border-radius:50%;background:var(--lime);animation:ping 1.6s infinite}
+.brand-symbol{transition:transform .5s cubic-bezier(.2,.8,.2,1)}.brand:hover .brand-symbol{transform:rotate(90deg) scale(1.05)}

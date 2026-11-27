@@ -50,6 +50,20 @@
       <button id="stop" type="button" class="stop" hidden>Stop</button>
     </form>
 
+    <section class="live" id="live" hidden aria-live="polite">
+      <div class="live-head">
+        <div><div class="live-kicker"><span class="live-dot"></span><span id="liveKicker">Live search</span></div><div class="live-title" id="liveTitle"></div></div>
+        <div class="stages"><span class="stage" data-stage="collecting"><b>1</b>Collecting</span><span class="stage" data-stage="scoring"><b>2</b>Scoring</span><span class="stage" data-stage="done"><b>3</b>Done</span></div>
+      </div>
+      <div class="tiles">
+        <div class="tile"><div class="tile-label">Pictures found</div><div class="tile-num" id="statFound">0</div></div>
+        <div class="tile"><div class="tile-label">Scored by the AI</div><div class="tile-num" id="statScored">0</div><div class="tile-sub" id="statScoredOf"></div></div>
+        <div class="tile lime"><div class="tile-label">Design-led</div><div class="tile-num" id="statDesign">0</div><div class="tile-sub">different designs</div></div>
+        <div class="tile"><div class="tile-label">Duplicates hidden</div><div class="tile-num" id="statDups">0</div><div class="tile-sub">same design, other size</div></div>
+        <div class="tile"><div class="tile-label">Off-topic hidden</div><div class="tile-num" id="statOff">0</div><div class="tile-sub">not about this search</div></div>
+      </div>
+      <div class="live-track"><span id="liveBar"></span></div>
+    </section>
     <div class="status" id="status" role="status"></div>
     <div class="ai-status" id="aiStatus" role="status"></div>
     <div class="results-head"><strong id="count">Choose an industry or type a search to begin</strong><span class="toggles"><button id="designLed" type="button" class="toggle active" title="Only show pictures scoring 50% or more">✳ Design-led</button><button id="winners" type="button" class="toggle" title="Running 3+ months in 3+ separate ads: brands rarely keep paying for ads that don't work">🔥 Likely winners</button><button id="offTopic" type="button" class="toggle" title="Ads that aren't about this search (e.g. a hiring poster in “food”) are hidden; this shows them">Show off-topic</button><button id="dups" type="button" class="toggle" title="Copies of the same design (other sizes or crops) are hidden; this shows them">Show duplicates</button></span></div>
