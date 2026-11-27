@@ -1,0 +1,92 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="robots" content="noindex, nofollow">
+<title>Creative Lens — Teammate guide</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=DM+Mono:wght@400;500&family=DM+Sans:wght@400;500;600;700&family=Playfair+Display:ital,wght@0,500;1,500&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="style.css">
+<style>
+  .guide{max-width:760px;margin:0 auto;padding:36px 20px 60px}
+  .guide h2{font:500 24px/1.2 var(--serif);margin:34px 0 10px}
+  .guide p,.guide li{color:var(--muted);line-height:1.65}
+  .guide b,.guide strong{color:var(--ink)}
+  .guide ol,.guide ul{padding-left:22px}.guide li{margin:6px 0}
+  .guide a{color:var(--lime)}
+  .back{display:inline-block;margin-bottom:22px;font-size:13px;text-decoration:none}
+  .box{background:var(--panel);border:1px solid var(--line);border-radius:14px;padding:14px 18px;margin:12px 0}
+  .box p{margin:6px 0}
+  dl{display:grid;grid-template-columns:max-content 1fr;gap:8px 16px;margin:10px 0}
+  dt{color:var(--ink);font-weight:600}dd{margin:0;color:var(--muted)}
+  @media(max-width:600px){dl{grid-template-columns:1fr}dd{margin-bottom:8px}}
+</style>
+</head>
+<body>
+<main class="guide">
+  <a class="back" href="./">← Back to Creative Lens</a>
+  <section class="hero">
+    <div class="kicker">Teammate guide</div>
+    <h1>Creative Lens in <em>2 minutes.</em></h1>
+    <p>Search live Meta ads, and see the well-designed ones first.</p>
+  </section>
+
+  <h2>What it does</h2>
+  <p>Pick an industry (or type any search). Creative Lens collects the image ads running in that market on Meta's public Ad Library, then an AI in your browser scores how <b>designed</b> each one looks and shows the best first. Copies of the same design and ads that aren't about your search are hidden.</p>
+
+  <h2>One-time setup</h2>
+  <p>You need <b>Google Chrome</b> on a laptop or desktop. The website searches through a small Chrome add-on (the “Ad Snob helper”), so each search comes from your own browser: Meta blocks searches from servers. The helper searches <b>logged out</b>; it never uses your Facebook account.</p>
+  <ol>
+    <li>On the <a href="./">Creative Lens page</a>, click <b>⬇ Download the helper</b> (or <a href="downloads/ad-snob-helper.zip" download>download it here</a>).</li>
+    <li>Right-click the downloaded <code>ad-snob-helper.zip</code> → <b>Extract All…</b> → <b>Extract</b>. Keep the folder somewhere safe, like Documents: Chrome uses it from there, so don't delete it.</li>
+    <li>In Chrome, type <code>chrome://extensions</code> in the address bar and switch on <b>Developer mode</b> (top right).</li>
+    <li>Click <b>Load unpacked</b> and pick the <code>ad-snob-helper</code> folder that has <code>manifest.json</code> inside. (Extract All often makes a folder inside a folder: pick the inner one.)</li>
+    <li>Go back to Creative Lens and press <b>Ctrl+F5</b>. The setup box disappears.</li>
+  </ol>
+  <div class="box"><p>Chrome may say the add-on is in “developer mode”. That's expected: it isn't on the Chrome Web Store, it's our own.</p></div>
+
+  <h2>Searching</h2>
+  <ol>
+    <li><b>Use a mobile hotspot or home Wi-Fi.</b> Office Wi-Fi blocks Facebook, so searches fail there.</li>
+    <li>Click an industry on the left, or type a search and press <b>Search</b>.</li>
+    <li>Ads appear as they're collected, then get scored. When everything is scored, the best move to the top. A full search can take 10–30 minutes; press <b>Stop</b> any time and you keep what was found.</li>
+  </ol>
+  <div class="box">
+    <p><b>The first search</b> downloads the AI once (about 180 MB). Your first <b>typed</b> search (not an industry button) downloads one more part (about 127 MB). After that it's instant.</p>
+    <p><b>Please don't hammer the Search button.</b> If Meta says it's limiting you, wait 10–15 minutes. Searching again and again makes the block last longer.</p>
+  </div>
+
+  <h2>Reading the results</h2>
+  <dl>
+    <dt>Design score</dt><dd>How designed the ad looks (layout, graphics, text), 0–100%.</dd>
+    <dt>✳ Design-led</dt><dd>Scores 50% or more. On by default; turn it off to see everything.</dd>
+    <dt>🔥 Likely winner</dt><dd>Running 3+ months in 3+ separate ads: the brand keeps paying for it. A clue, not proof.</dd>
+    <dt>🆕 New</dt><dd>Started in the last 2 weeks: something they're testing now.</dd>
+    <dt>Duplicate</dt><dd>Another size or crop of a design shown elsewhere. Hidden unless you press <b>Show duplicates</b>.</dd>
+    <dt>Off-topic</dt><dd>Neither the picture nor the ad's text is about your search (e.g. a hiring poster in “food”). Hidden unless you press <b>Show off-topic</b>.</dd>
+  </dl>
+  <p>Click any ad for details: all its versions, how long it has run, what the AI noticed, the ad text, and a link to the ad on Meta.</p>
+
+  <h2>Saving ads</h2>
+  <p>Press <b>♧</b> on an ad (or <b>Save</b> in its details) and it appears under <b>Saved ads</b> on the left, even after you close the page. Saved ads are kept <b>in your own browser only</b>: teammates don't see yours, and clearing Chrome's browsing data removes them.</p>
+
+  <h2>If something goes wrong</h2>
+  <dl>
+    <dt>The setup box won't go away</dt><dd>Check the helper is switched on in <code>chrome://extensions</code>, then press <b>Ctrl+F5</b> here.</dd>
+    <dt>“Extension context invalidated”</dt><dd>The helper was reloaded or updated: press <b>Ctrl+F5</b> on this page.</dd>
+    <dt>“Your helper is out of date”</dt><dd>In <code>chrome://extensions</code>, click <b>Remove</b> on Ad Snob helper, then do the setup again with a fresh download. Saved ads stay.</dd>
+    <dt>0 ads, or “Meta stopped responding”</dt><dd>You're probably on office Wi-Fi, or Meta is limiting your connection. Switch to a hotspot, or wait 10–15 minutes.</dd>
+    <dt>Some ads say “Couldn't score”</dt><dd>Their picture couldn't be downloaded. The rest are fine.</dd>
+  </dl>
+  <p>Still stuck? Open the <b>Diagnostics</b> section at the bottom of the page and send its text to whoever shared Creative Lens with you.</p>
+
+  <h2>Good to know</h2>
+  <ul>
+    <li>It reads Meta's public Ad Library pages, like you would by hand. Use it for research, at a normal pace.</li>
+    <li>Nothing you search or save is sent to us: it all happens in your browser.</li>
+  </ul>
+</main>
+</body>
+</html>

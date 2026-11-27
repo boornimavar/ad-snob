@@ -111,8 +111,12 @@ Phase 2 = shared library on Hugging Face (Supabase is blocked by ACT).
   app's records are per card). Detail panel = the app's (versions strip,
   facts, "What the AI noticed"). Saved ads live in each visitor's own browser
   (`website/saved.js`, IndexedDB, with a copy of the picture since Meta's
-  links expire); not shared between teammates. Step 4 done; next step 5
-  sharing with teammates.
+  links expire); not shared between teammates. Step 4 done.
+- Step 5 (sharing): no Chrome Web Store (costs $5). Teammates download
+  `website/downloads/ad-snob-helper.zip` from the site's setup box and use
+  Load unpacked; `website/guide.html` is the plain-words guide. **After any
+  change in `extension/`, run `.venv\Scripts\python.exe websiteuild_helper.py`
+  and commit the zip** (it refuses if the add-on is older than NEEDS_HELPER).
 
 ## Hard-won facts
 - `meta_ads_collector` must be **1.4.0** (from `meta_ads_collector_source.zip`).

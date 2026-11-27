@@ -505,8 +505,8 @@ function runSearch() {
   const query = $("q").value.trim();
   if (!query || search?.collecting) return;
   const version = helperVersion();
-  if (!version) { $("helperMissing").hidden = false; return setStatus("bad", "Install the helper add-on first (steps above)."); }
-  if (olderThan(version, NEEDS_HELPER)) return setStatus("bad", `Your helper add-on is out of date (${version}). Open chrome://extensions, click ↻ on Ad Snob helper, then reload this page.`);
+  if (!version) { showHelperBox(); return setStatus("bad", "Add the helper to Chrome first (steps above)."); }
+  if (olderThan(version, NEEDS_HELPER)) { showHelperBox(version); return setStatus("bad", `Your helper is out of date (${version}, this site needs ${NEEDS_HELPER}). Update it with the steps above.`); }
   showExplore();
   search = { id: crypto.randomUUID(), collecting: true, query };
   closeDetail();
@@ -635,4 +635,20 @@ allSaved().then((rows) => { savedKeys = new Set(rows.map((r) => r.key)); refresh
 $("winners").addEventListener("click", toggleWinners);
 renderCategories();
 // The helper marks the page as soon as it loads; check once the page is ready.
-setTimeout(() => { if (!helperVersion()) $("helperMissing").hidden = false; }, 800);
+/** The install box; with `oldVersion`, worded as an update. */
+function showHelperBox(oldVersion) {
+  $("helperMissing").hidden = false;
+  $("helperDownload").href = `downloads/ad-snob-helper.zip?v=${NEEDS_HELPER}`; // never an old cached copy
+  if (oldVersion) {
+    $("helperTitle").textContent = `Update the helper: you have ${oldVersion}, this site needs ${NEEDS_HELPER}`;
+    $("helperUpdate").hidden = false;
+  }
+}
+document.querySelectorAll("button.copy").forEach((b) => b.addEventListener("click", async () => {
+  try { await navigator.clipboard.writeText(b.dataset.copy); b.textContent = "Copied ✓"; } catch { b.textContent = "Copy it by hand"; }
+  setTimeout(() => { b.textContent = "Copy"; }, 2000);
+}));
+setTimeout(() => {
+  const v = helperVersion();
+  if (!v) showHelperBox(); else if (olderThan(v, NEEDS_HELPER)) showHelperBox(v);
+}, 800);

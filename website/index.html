@@ -26,18 +26,21 @@
     <section class="hero">
       <div class="kicker">Creative research, without the guesswork</div>
       <h1>Find ads worth <em>looking at.</em></h1>
-      <p>Live Meta ads, searched from your own browser.</p>
+      <p>Live Meta ads, searched from your own browser. New here? <a href="guide.html">Read the 2-minute guide</a>.</p>
     </section>
 
     <div class="helper-missing" id="helperMissing" hidden>
-      <strong>One-time setup: install the Ad Snob helper</strong>
-      <p>The website searches Meta through a small Chrome add-on, so searches come from your own browser (Meta blocks searches from servers).</p>
+      <strong id="helperTitle">One-time setup (2 minutes): add the Ad Snob helper to Chrome</strong>
+      <p id="helperWhy">The website searches Meta through a small Chrome add-on, so each search comes from your own browser (Meta blocks searches from servers). It searches logged out: it never uses your Facebook account.</p>
+      <a class="download" id="helperDownload" href="downloads/ad-snob-helper.zip" download>⬇ Download the helper</a>
       <ol>
-        <li>Get the <code>extension</code> folder from your team (or the <code>ad-snob</code> repo).</li>
-        <li>Open <code>chrome://extensions</code> and switch on <b>Developer mode</b> (top right).</li>
-        <li>Click <b>Load unpacked</b> and choose the <code>extension</code> folder.</li>
-        <li>Reload this page.</li>
+        <li>Open the downloaded <code>ad-snob-helper.zip</code>: right-click it → <b>Extract All…</b> → <b>Extract</b>. Keep the folder somewhere safe (for example Documents): Chrome uses it from there.</li>
+        <li>In Chrome, open <code>chrome://extensions</code> <button type="button" class="copy" data-copy="chrome://extensions">Copy</button> (paste it into the address bar) and switch on <b>Developer mode</b>, top right.</li>
+        <li>Click <b>Load unpacked</b> and choose the <code>ad-snob-helper</code> folder that has <code>manifest.json</code> inside (after Extract All it's often one folder deeper).</li>
+        <li>Come back here and press <b>Ctrl+F5</b>.</li>
       </ol>
+      <p class="helper-update" id="helperUpdate" hidden>Updating: in <code>chrome://extensions</code> click <b>Remove</b> on the old “Ad Snob helper”, then do the 4 steps above with the new download. Your saved ads stay (they live in the website, not in the add-on).</p>
+      <p>Stuck? See the <a href="guide.html">teammate guide</a>.</p>
     </div>
 
     <form class="search" id="searchForm">
