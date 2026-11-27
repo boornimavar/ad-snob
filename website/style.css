@@ -1,6 +1,6 @@
 /* Same look as the laptop app's dashboard (dashboard.html). */
 :root{--bg:#14141b;--panel:#1c1b24;--panel-2:#24232d;--panel-3:#2c2a36;--line:#373541;--ink:#f0eee8;--muted:#a5a2b0;--dim:#777482;--lime:#d8ff67;--lime-soft:#313a25;--danger:#ff8278;
-  --sans:'DM Sans',Arial,sans-serif;--serif:'Playfair Display',Georgia,serif;--mono:'DM Mono',monospace;color-scheme:dark}
+  --sans:Inter,Arial,sans-serif;--serif:'Bricolage Grotesque',Inter,sans-serif;--mono:'JetBrains Mono',monospace;color-scheme:dark}
 *{box-sizing:border-box}
 body{margin:0;background:var(--bg);color:var(--ink);font:14px/1.5 var(--sans);-webkit-font-smoothing:antialiased}
 button,input,select{font:inherit}
@@ -77,3 +77,32 @@ code{font-family:var(--mono);font-size:12px;background:var(--panel-2);padding:1p
 .download{display:inline-block;margin:10px 0 6px;background:var(--lime);color:#191a19!important;border-radius:10px;padding:10px 16px;font-weight:700;text-decoration:none}
 .copy{margin-left:4px;border:1px solid var(--line);background:var(--panel-2);color:var(--ink);border-radius:6px;padding:1px 8px;font-size:11px;cursor:pointer}
 .hero p a{color:var(--lime)}
+/* ---- New look (2026-11-27): Bricolage Grotesque headings + Inter, and motion ---- */
+.brand-name{font-weight:800;letter-spacing:-.02em}
+.hero h1{font-weight:800;letter-spacing:-.03em;line-height:1.02}
+.hero h1 em{font-style:normal}
+.detail-brand{font-weight:700;letter-spacing:-.01em}
+.card .brand-line{font-family:var(--serif);font-weight:700;font-size:13.5px}
+.hero{position:relative}
+.hero:before{content:"";position:absolute;z-index:-1;left:-10%;top:-60px;width:520px;height:300px;background:radial-gradient(closest-side,#d8ff6722,transparent);animation:drift 9s ease-in-out infinite alternate;pointer-events:none}
+.main{position:relative;isolation:isolate;overflow-x:clip}
+@keyframes drift{to{transform:translate(35%,25%) scale(1.15)}}
+.card{animation:rise .6s cubic-bezier(.2,.8,.2,1) var(--d,0ms) backwards;transition:transform .25s,border-color .25s,box-shadow .25s}
+@keyframes rise{from{opacity:0;transform:translateY(16px) scale(.98)}}
+.card:hover{transform:translateY(-4px);border-color:#657544;box-shadow:0 14px 30px #0006}
+.creative-media{overflow:hidden}
+.creative-media img{transition:transform .45s cubic-bezier(.2,.8,.2,1)}
+.card:hover .creative-media img{transform:scale(1.05)}
+.card.scoring .creative-media:after{content:"";position:absolute;inset:0;background:linear-gradient(110deg,transparent 30%,#ffffff1f 45%,transparent 60%);background-size:220% 100%;animation:sheen 1.5s linear infinite;pointer-events:none}
+@keyframes sheen{from{background-position-x:120%}to{background-position-x:-120%}}
+.score-bar{height:4px;border-radius:9px;background:#34323d;margin-top:8px;overflow:hidden}
+.score-bar span{display:block;height:100%;width:0;background:var(--lime);border-radius:9px;transition:width 1.2s cubic-bezier(.2,.8,.2,1)}
+.card:not(.design-led) .score-bar span{background:#8a8796}
+.toggle,.search button,.nav-btn,.categories button,.save-float{transition:background .2s,color .2s,border-color .2s,transform .12s}
+.toggle:active,.search button:active,.nav-btn:active,.categories button:active,.save-float:active{transform:scale(.96)}
+.save-float.pop{animation:pop .35s ease-out}
+@keyframes pop{50%{transform:scale(1.25)}}
+.detail-backdrop.show{animation:fade .2s ease-out}.detail-backdrop.show .detail{animation:zoomin .3s cubic-bezier(.2,.8,.2,1)}
+@keyframes fade{from{opacity:0}}@keyframes zoomin{from{opacity:0;transform:translateY(12px) scale(.97)}}
+.status.ok{animation:fade .4s ease-out}
+@media (prefers-reduced-motion:reduce){*,*:before,*:after{animation-duration:.01ms!important;animation-iteration-count:1!important;transition-duration:.01ms!important}}

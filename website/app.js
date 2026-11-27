@@ -122,7 +122,8 @@ function enqueue(item) {
 function makeCard(item) {
   const { ad } = item;
   const card = document.createElement("article");
-  card.className = "card";
+  card.className = item.state === "waiting" ? "card scoring" : "card";
+  card.style.setProperty("--d", `${(document.querySelectorAll(".card").length % 6) * 70}ms`); // cards rise in one by one
   const img = document.createElement("img");
   img.src = item.url;
   img.alt = `Ad by ${ad.page || "unknown advertiser"}`;
@@ -157,7 +158,10 @@ function makeCard(item) {
   }
   const tag = document.createElement("div");
   tag.className = "tag-slot";
-  body.append(brand, tag, meta, meta2);
+  const bar = document.createElement("div");
+  bar.className = "score-bar";
+  bar.append(document.createElement("span"));
+  body.append(brand, tag, meta, bar, meta2);
   const media = document.createElement("div");
   media.className = "creative-media";
   const save = document.createElement("button");
@@ -178,6 +182,7 @@ function makeCard(item) {
 function updateCard(item) {
   const verdict = item.card.querySelector(".verdict");
   const score = item.card.querySelector(".score");
+  item.card.classList.toggle("scoring", item.state === "waiting");
   if (item.state === "failed") {
     verdict.textContent = "Couldn't score";
     verdict.title = item.error;
@@ -190,6 +195,7 @@ function updateCard(item) {
       : dup ? "Another version of a design shown elsewhere (a different size or crop)" : "";
     score.textContent = `${Math.round(r * 100)}%`;
     item.card.classList.toggle("design-led", r >= DESIGN_LED);
+    item.card.querySelector(".score-bar span").style.width = `${Math.round(r * 100)}%`;
     item.card.classList.toggle("duplicate", dup);
   }
   if (item.row) {
@@ -246,7 +252,11 @@ function scheduleRegroup() {
 function sortBestFirst() {
   const grid = $("grid");
   const order = [...creatives].sort((a, b) => (b.record?.rank_score ?? -1) - (a.record?.rank_score ?? -1));
-  for (const item of order) grid.append(item.card);
+  let shown = 0;
+  for (const item of order) {
+    item.card.style.setProperty("--d", `${Math.min(item.card.hidden ? 0 : shown++, 12) * 45}ms`); // the best ones rise first
+    grid.append(item.card);
+  }
 }
 
 function updateProgress() {
@@ -375,6 +385,7 @@ function refreshSaveButton(item) {
   const button = item.card?.querySelector(".save-float");
   if (!button) return;
   const saved = isSaved(item);
+  if (button.classList.contains("saved") !== saved && button.textContent) { button.classList.remove("pop"); void button.offsetWidth; button.classList.add("pop"); }
   button.classList.toggle("saved", saved);
   button.textContent = saved ? "★" : "♧";
   button.title = button.ariaLabel = saved ? "Remove from saved ads" : "Save this ad";
