@@ -322,7 +322,7 @@ function updateProgress() {
   const copies = creatives.filter((c) => c.state === "scored" && c.row?.is_creative_representative === 0).length;
   const shown = creatives.filter((c) => c.state === "scored" && !c.card.hidden).length;
   const kind = `${winnersOnly ? "likely-winner " : ""}${designLedOnly ? "design-led " : ""}`;
-  if (view === "explore") setCount(shown, ` ${kind}creative${shown === 1 ? "" : "s"} shown`, `${DEMO ? " · made-up demo ads" : ""}`);
+  if (view === "explore") setCount(shown, ` ${kind}creative${shown === 1 ? "" : "s"} shown`, `${DEMO && new URLSearchParams(location.search).get("demo") !== "real" ? " · made-up demo ads" : ""}`);
   if (search) setLive({ stage: search.collecting ? "collecting" : allScored ? "done" : "scoring", found: creatives.length, scored, designLed, copies, offTopic });
   if (search?.collecting) {
     if (creatives.length) setStatus("", "");
@@ -643,6 +643,19 @@ function toggleWinners() {
 }
 
 async function demoSearch(query, id) {
+  // ?demo=real: saved real ad pictures from _test/shots (on the developer's computer only), for screenshots
+  if (new URLSearchParams(location.search).get("demo") === "real") {
+    const shots = await fetch("_test/shots/manifest.json").then((r) => (r.ok ? r.json() : null)).catch(() => null);
+    if (shots) {
+      for (let i = 0; i < shots.length; i += 5) {
+        await new Promise((r) => setTimeout(r, 700));
+        const ads = shots.slice(i, i + 5).map((s) => ({ id: s.id, page: s.page, start: s.start, images: [`_test/shots/${s.file}`],
+          texts: [{ title: s.title, body: s.body, cta: s.cta }], title: s.title, body: s.body, cta: s.cta }));
+        window.postMessage({ type: "adsnob:progress", id, ads }, location.origin);
+      }
+      return window.postMessage({ type: "adsnob:result", id, result: { ok: true, stoppedBecause: "last_page", diag: { steps: ["demo: saved real ads"] } } }, location.origin);
+    }
+  }
   const colours = ["#e9c46a", "#f4a261", "#2a9d8f", "#e76f51", "#8ab17d", "#b5838d"];
   const run = search;
   for (let page = 0; page < 2; page++) {
