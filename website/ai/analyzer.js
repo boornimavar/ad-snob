@@ -24,6 +24,7 @@ export class Analyzer {
       if (!job) return;
       this.pending.delete(id);
       if (kind === "embedding") job.resolve(event.data.embedding);
+      else if (kind === "text") job.resolve(event.data.vectors);
       else job.reject(new Error(event.data.error));
     };
   }
@@ -63,6 +64,15 @@ export class Analyzer {
     });
   }
 
+  /** CLIP text vectors for some phrases (the off-topic check, typed searches only). One-time ~127 MB download. */
+  embedTexts(texts) {
+    const id = this.nextId++;
+    return new Promise((resolve, reject) => {
+      this.pending.set(id, { resolve, reject });
+      this.clip.postMessage({ kind: "text", id, texts });
+    });
+  }
+
   /** One text reading: tesseract words as {text, conf, left, top, width, height}. */
   async read(pixels, width, height, channels) {
     const canvas = new OffscreenCanvas(width, height);
@@ -93,8 +103,11 @@ export class Analyzer {
       this.read(v.rgb, v.width, v.height, 3),
       ...v.grays.map((g) => this.read(g, v.width, v.height, 1)),
     ]);
+    const embedding = await embeddingPromise;
     const record = {
-      ...clipMeasurements(await embeddingPromise, this.text),
+      ...clipMeasurements(embedding, this.text),
+      // kept like the app's clip_embedding column (5 decimals): the off-topic check reads it
+      clip_embedding: Array.from(embedding, (v) => Number(v.toFixed(5))),
       ...bestReading(readings, width, height),
       visual_complexity: Math.round(visualComplexity(rgb, width, height) * 1e4) / 1e4,
       image_width: width,

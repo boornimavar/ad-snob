@@ -101,7 +101,14 @@ Phase 2 = shared library on Hugging Face (Supabase is blocked by ACT).
   (OCR word counts differ: native Tesseract 5.4 vs wasm, every tesseract.js
   version reads the same), design-led verdict changed 0/50; 1.8 s/picture.
   `website/_test/` (git-ignored) is the in-browser comparison page.
-- Next: step 4 duplicates/likely winner/off-topic/detail panel/saved ads,
+- Step 4 (2026-11-27): `ai/phash.js` (imagehash phash + 5 crop hashes,
+  bit-exact on 290 pictures), `ai/dedup.js` (the app's grouping WITHOUT SIFT,
+  identical on 3,890 test rows; SIFT changed 1 group of 289), Likely winner /
+  New tags, `ai/topic.js` (topic_check port, 4,640/4,640 identical). Topic
+  vectors + side-list category vectors come from `ai/export_topic_text.py`;
+  typed searches use CLIP's text half in the browser (fp16, identical,
+  ~127 MB once). Helper 0.6.0 sends each carousel card's own title/body (the
+  app's records are per card). Still to do: detail panel, saved ads; then
   step 5 sharing with teammates.
 
 ## Hard-won facts

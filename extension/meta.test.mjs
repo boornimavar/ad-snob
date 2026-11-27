@@ -108,7 +108,15 @@ function fakeMeta(pagesList) {
 { // simplifyAd keeps the ad text the detail view will need
   const ad = simplifyAd({ ad_archive_id: 5, snapshot: { page_name: "P", title: "T", body: { text: "Body" }, cta_text: "Shop now",
     images: [{ original_image_url: "https://x/a.jpg" }], videos: [] }, start_date: 1790000000 });
-  assert.deepEqual(ad, { id: "5", page: "P", images: ["https://x/a.jpg"], start: 1790000000, title: "T", body: "Body", cta: "Shop now" });
+  assert.deepEqual(ad, { id: "5", page: "P", images: ["https://x/a.jpg"], texts: [{ title: "T", body: "Body", cta: "Shop now" }],
+    start: 1790000000, title: "T", body: "Body", cta: "Shop now" });
+}
+{ // a carousel: each card keeps its own text, like the app's records
+  const ad = simplifyAd({ ad_archive_id: 6, snapshot: { page_name: "P", title: "Ad title", body: { text: "Ad body" }, cta_text: "Buy",
+    cards: [{ title: "Card 1", body: "Hair oil", resized_image_url: "https://x/c1.jpg" }, { title: null, body: { text: "Serum" }, original_image_url: "https://x/c2.jpg", cta_text: "Shop" },
+      { title: "No picture" }] } });
+  assert.deepEqual(ad.images, ["https://x/c1.jpg", "https://x/c2.jpg"]);
+  assert.deepEqual(ad.texts, [{ title: "Card 1", body: "Hair oil", cta: "Buy" }, { title: "", body: "Serum", cta: "Shop" }]);
 }
 assert.equal(parseSearchResponse(JSON.stringify({ errors: [{ code: 1357004, message: "Please try again" }] })).sessionExpired, true);
 

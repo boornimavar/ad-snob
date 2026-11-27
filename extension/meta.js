@@ -140,23 +140,42 @@ const VIDEO_MARKERS = ["VIDEO", "REELS", "VIDEO_SLIDESHOW", "VIDEO_COLLECTION"];
  * `ad` is the flattened collated result (snapshot fields merged in).
  */
 export function adImages(ad) {
+  return adCreatives(ad).map((c) => c.image);
+}
+
+// models.py _extract_body_text + meta_collection.clean_text
+const bodyText = (b) => (b == null ? "" : typeof b === "object" && !Array.isArray(b) ? String(b.text ?? "") : String(b));
+const plain = (v) => (v == null ? "" : String(v));
+
+/**
+ * The ad's picture creatives with each one's own text, as the app keeps them:
+ * a carousel card has its own title/body (the app's off-topic check reads
+ * those), a normal ad the ad's. [{image, title, body, cta}]
+ */
+export function adCreatives(ad) {
   const cards = ad.cards || [];
   const videos = ad.videos || [];
   const images = ad.images || [];
   let creatives;
   if (cards.length) {
-    creatives = cards.map((c) => ({ image: c.resized_image_url || c.original_image_url, video: c.video_hd_url || c.video_sd_url }));
+    creatives = cards.map((c) => ({
+      image: c.resized_image_url || c.original_image_url, video: c.video_hd_url || c.video_sd_url,
+      title: plain(c.title), body: bodyText(c.body), cta: plain(c.cta_text || ad.cta_text),
+    }));
   } else if (ad.body != null || ad.title != null || ad.videos != null || ad.images != null) {
     const v = videos[0] || {};
     const img = images[0] || {};
-    creatives = [{ image: img.original_image_url || img.resized_image_url, video: v.video_hd_url || v.video_sd_url }];
+    creatives = [{
+      image: img.original_image_url || img.resized_image_url, video: v.video_hd_url || v.video_sd_url,
+      title: plain(ad.title), body: bodyText(ad.body), cta: plain(ad.cta_text),
+    }];
   } else {
     creatives = [];
   }
   if (creatives.some((c) => c.video) || videos.length) return []; // has_video=False: no part may be a video
   const display = String(ad.display_format || "").toUpperCase();
   if (VIDEO_MARKERS.some((m) => display.includes(m))) return [];
-  return creatives.map((c) => c.image).filter(Boolean);
+  return creatives.filter((c) => c.image).map(({ image, title, body, cta }) => ({ image, title, body, cta }));
 }
 
 export const PAGE_SIZE = 30; // ads per request, as the app (SCRAPE_PAGE_SIZE)
@@ -210,10 +229,12 @@ export async function collectAds({ fetchPage, onPage = () => {}, shouldStop = ()
 /** One ad as the website needs it. */
 export function simplifyAd(raw) {
   const ad = { ...(raw.snapshot || {}), ...raw }; // fields may sit at the top or inside snapshot
+  const creatives = adCreatives(ad);
   return {
     id: String(ad.ad_archive_id || ad.adArchiveID || ad.id || ""),
     page: ad.page_name || (ad.snapshot || {}).page_name || "",
-    images: adImages(ad),
+    images: creatives.map((c) => c.image),
+    texts: creatives.map(({ title, body, cta }) => ({ title, body, cta })), // one per picture, like the app's records
     start: ad.start_date || ad.ad_delivery_start_time || null,
     title: ad.title || (ad.snapshot || {}).title || "",
     body: ((ad.body || (ad.snapshot || {}).body || {}).text) || (typeof ad.body === "string" ? ad.body : ""),

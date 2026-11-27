@@ -4,6 +4,7 @@
 // fetches the ad pictures, from the visitor's own browser, logged out.
 // Add ?demo=1 to try the page with made-up ads when the helper isn't installed.
 import { Analyzer, decodeImage } from "./ai/analyzer.js";
+import { loadTopics, prepareSearch, checkTopics, categoryKey, searchPrompts } from "./ai/topic.js";
 import { deduplicateRows, summarizeGroups, daysRunning, runningLabel, isLikelyWinner, isNewAd } from "./ai/dedup.js";
 
 const CATEGORIES = [
@@ -11,7 +12,7 @@ const CATEGORIES = [
   ["Retail & lifestyle", ["fashion", "food", "home decor", "electronics"]],
   ["Other industries", ["supplements", "fitness", "software", "pet care", "travel"]],
 ];
-const NEEDS_HELPER = "0.5.0"; // picks ad pictures exactly like the app (0.4.0 took different ones)
+const NEEDS_HELPER = "0.6.0"; // 0.6.0 sends each carousel card's own text (the off-topic check reads it), like the app
 const DESIGN_LED = 0.5;       // same line as the app's Design-led filter
 const SCORING_LANES = 3;      // pictures scored at the same time
 const DEMO = new URLSearchParams(location.search).has("demo");
@@ -25,6 +26,7 @@ let queue = [];
 let lanesBusy = 0;
 let designLedOnly = true;
 let showDuplicates = false;
+let showOffTopic = false;
 let winnersOnly = false;
 let regroupTimer = null;
 
@@ -166,8 +168,10 @@ function updateCard(item) {
   } else if (item.state === "scored") {
     const r = item.record.rank_score;
     const dup = item.row?.is_creative_representative === 0;
-    verdict.textContent = dup ? "Duplicate" : r >= DESIGN_LED ? "Design-led" : "Not design-led";
-    verdict.title = dup ? "Another version of a design shown elsewhere (a different size or crop)" : "";
+    const off = item.row?.off_topic === 1;
+    verdict.textContent = off ? "Off-topic" : dup ? "Duplicate" : r >= DESIGN_LED ? "Design-led" : "Not design-led";
+    verdict.title = off ? "Neither the picture nor the ad's text looks like this search (e.g. a hiring poster in “food”)"
+      : dup ? "Another version of a design shown elsewhere (a different size or crop)" : "";
     score.textContent = `${Math.round(r * 100)}%`;
     item.card.classList.toggle("design-led", r >= DESIGN_LED);
     item.card.classList.toggle("duplicate", dup);
@@ -198,6 +202,7 @@ function applyFilter(item) {
   const scored = item.state === "scored";
   item.card.hidden = (designLedOnly && scored && item.record.rank_score < DESIGN_LED)
     || (!showDuplicates && item.row?.is_creative_representative === 0)
+    || (!showOffTopic && item.row?.off_topic === 1)
     || (winnersOnly && !(item.row && isLikelyWinner(item.row)));
 }
 
@@ -206,10 +211,14 @@ function regroup() {
   clearTimeout(regroupTimer);
   regroupTimer = null;
   const scored = creatives.filter((c) => c.state === "scored");
-  for (const c of scored) c.row = { ...c.record, ad_id: c.ad.id, image_file: c.key, ad_start_date: startDateOf(c.ad.start) };
+  for (const c of scored) {
+    const text = c.ad.texts?.[c.index] || c.ad; // each carousel card's own text, as the app keeps it
+    c.row = { ...c.record, ad_id: c.ad.id, image_file: c.key, ad_start_date: startDateOf(c.ad.start), title: text.title || "", body: text.body || "" };
+  }
   const rows = scored.map((c) => c.row);
   deduplicateRows(rows);
   summarizeGroups(rows);
+  checkTopics(rows, search?.topic); // until the search's topic is ready, nothing is off-topic
   scored.forEach(updateCard);
 }
 function scheduleRegroup() {
@@ -226,13 +235,15 @@ function updateProgress() {
   const scored = creatives.filter((c) => c.state !== "waiting").length;
   const allScored = scored === creatives.length;
   if (search && !search.collecting && allScored && !search.sorted) regroup(); // the final grouping, over everything
-  const unique = creatives.filter((c) => c.state === "scored" && c.row?.is_creative_representative !== 0);
+  const unique = creatives.filter((c) => c.state === "scored" && c.row?.is_creative_representative !== 0 && (showOffTopic || c.row?.off_topic !== 1));
+  const offTopic = creatives.filter((c) => c.state === "scored" && c.row?.is_creative_representative !== 0 && c.row?.off_topic === 1).length;
   const designLed = unique.filter((c) => c.record.rank_score >= DESIGN_LED).length;
   const copies = creatives.filter((c) => c.state === "scored" && c.row?.is_creative_representative === 0).length;
   const shown = creatives.filter((c) => c.state === "scored" && !c.card.hidden).length;
   const kind = `${winnersOnly ? "likely-winner " : ""}${designLedOnly ? "design-led " : ""}`;
   $("count").textContent = `${shown} ${kind}creative${shown === 1 ? "" : "s"} (of ${scored} scored`
-    + `${copies && !showDuplicates ? `, ${copies} duplicate${copies === 1 ? "" : "s"} hidden` : ""})${DEMO ? " · made-up demo ads" : ""}`;
+    + `${copies && !showDuplicates ? `, ${copies} duplicate${copies === 1 ? "" : "s"} hidden` : ""}`
+    + `${offTopic && !showOffTopic ? `, ${offTopic} off-topic hidden` : ""})${DEMO ? " · made-up demo ads" : ""}`;
   if (search?.collecting) {
     setStatus("", `Collecting ads… ${creatives.length} pictures so far, ${scored} scored.`, true);
   } else if (search && !allScored) {
@@ -242,7 +253,7 @@ function updateProgress() {
     sortBestFirst();
     const failed = creatives.filter((c) => c.state === "failed").length;
     setStatus(creatives.length ? "ok" : "bad", search.endNote || (creatives.length
-      ? `Done: ${creatives.length} pictures scored → ${unique.length} different designs (${copies} duplicate${copies === 1 ? "" : "s"} hidden), ${designLed} design-led, best first.${failed ? ` ${failed} couldn't be scored.` : ""}`
+      ? `Done: ${creatives.length} pictures scored → ${unique.length} different designs (${copies} duplicate${copies === 1 ? "" : "s"}${offTopic && !showOffTopic ? `, ${offTopic} off-topic` : ""} hidden), ${designLed} design-led, best first.${failed ? ` ${failed} couldn't be scored.` : ""}`
         + (designLedOnly && designLed < creatives.length ? " Turn off ✳ Design-led to see the rest." : "")
       : "Meta answered, but with 0 image ads. It may be limiting this connection; try again later."));
   }
@@ -253,7 +264,7 @@ function addAds(ads) {
   const grid = $("grid");
   for (const ad of ads) {
     ad.images.forEach((url, i) => {
-      const item = { key: `${ad.id}:${i}`, ad, url, state: "waiting", searchId: search.id };
+      const item = { key: `${ad.id}:${i}`, index: i, ad, url, state: "waiting", searchId: search.id };
       creatives.push(item);
       grid.append(makeCard(item));
       enqueue(item);
@@ -296,6 +307,7 @@ function runSearch() {
   $("count").textContent = "";
   setStatus("", `Searching Meta for “${query}”… the first ads take about 10–30 seconds.`, true);
   startAI().catch((err) => { $("aiStatus").textContent = `The AI couldn't start: ${err.message || err}`; });
+  prepareTopic(query, search);
   if (DEMO) return demoSearch(query, search.id);
   window.postMessage({ type: "adsnob:search", id: search.id, query, country: $("country").value }, location.origin);
 }
@@ -309,6 +321,33 @@ function stopSearch() {
 function toggleDesignLed() {
   designLedOnly = !designLedOnly;
   $("designLed").classList.toggle("active", designLedOnly);
+  creatives.forEach(applyFilter);
+  updateProgress();
+}
+/** The off-topic check for this search: ready-made for side-list categories, CLIP's text half for typed ones. */
+async function prepareTopic(query, run) {
+  try {
+    const topics = await loadTopics();
+    if (topics.categories[categoryKey(query)]) run.topic = prepareSearch(query, topics);
+    else {
+      await startAI();
+      if (run !== search) return;
+      $("aiStatus").textContent = "Getting the off-topic check ready for this typed search (one-time download, about 127 MB)…";
+      run.topic = prepareSearch(query, topics, await analyzer.embedTexts(searchPrompts(query)));
+      if (run === search) $("aiStatus").textContent = "";
+    }
+  } catch (err) {
+    if (run === search) $("aiStatus").textContent = `Off-topic check skipped: ${err.message || err}`;
+  }
+  if (run !== search) return;
+  regroup();
+  run.sorted = false; // if it already finished, re-sort and rewrite the summary with the off-topic ads hidden
+  updateProgress();
+}
+
+function toggleOffTopic() {
+  showOffTopic = !showOffTopic;
+  $("offTopic").classList.toggle("active", showOffTopic);
   creatives.forEach(applyFilter);
   updateProgress();
 }
@@ -376,6 +415,7 @@ $("searchForm").addEventListener("submit", (e) => { e.preventDefault(); runSearc
 $("stop").addEventListener("click", stopSearch);
 $("designLed").addEventListener("click", toggleDesignLed);
 $("dups").addEventListener("click", toggleDuplicates);
+$("offTopic").addEventListener("click", toggleOffTopic);
 $("winners").addEventListener("click", toggleWinners);
 renderCategories();
 // The helper marks the page as soon as it loads; check once the page is ready.
