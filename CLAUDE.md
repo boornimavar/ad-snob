@@ -115,7 +115,7 @@ Phase 2 = shared library on Hugging Face (Supabase is blocked by ACT).
 - Step 5 (sharing): no Chrome Web Store (costs $5). Teammates download
   `website/downloads/ad-snob-helper.zip` from the site's setup box and use
   Load unpacked; `website/guide.html` is the plain-words guide. **After any
-  change in `extension/`, run `.venv\Scripts\python.exe websiteuild_helper.py`
+  change in `extension/`, run `.venv\Scripts\python.exe websitebuild_helper.py`
   and commit the zip** (it refuses if the add-on is older than NEEDS_HELPER).
 
 ## Hard-won facts
