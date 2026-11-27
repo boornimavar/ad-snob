@@ -87,7 +87,7 @@ Phase 2 = shared library on Hugging Face (Supabase is blocked by ACT).
   then AdLibrarySearchPaginationQuery); `node extension/meta.test.mjs`.
   `bridge.js` (content script on the site + localhost:8099) relays page
   postMessage searches. First real test: skincare -> 10 ads, 6 with images.
-- Office Wi-Fi blocks Facebook; use a hotspot or home Wi-Fi.
+- Office Wi-Fi blocked Facebook for a while (2026-11-27); it works again now. If a search fails, try a hotspot.
 - Step 2 (paging like the 1.4.0 collector) and step 3 (AI in the browser)
   done. `website/ai/`: resize.js ports Pillow BICUBIC + CLIP's resize/crop
   (Python half-to-even rounding!); pixels.js the OCR variants + complexity
